@@ -10,14 +10,38 @@ def get_story_json(prompt):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a branching story generator."},
+            {"role": "system", "content": "You are a branching story generator. Always respond with valid JSON that represents a tree structure for a branching story. The JSON should have a 'name' field for the story node and a 'children' array for branching options."},
             {"role": "user", "content": prompt}
         ],
         max_tokens=800,
         temperature=0.1
     )
     story_content = response.choices[0].message.content
-    return json.loads(story_content)
+    
+    # Debug the response
+    st.write("Raw API response:")
+    st.write(story_content)
+    
+    # Try to clean the response if it's not pure JSON
+    # Sometimes the API might return markdown-formatted JSON or add explanatory text
+    if not story_content.strip().startswith('{'):
+        # Try to extract JSON from the response (if wrapped in ```json or similar)
+        import re
+        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', story_content)
+        if json_match:
+            story_content = json_match.group(1)
+    
+    try:
+        return json.loads(story_content)
+    except json.JSONDecodeError as e:
+        st.error(f"Failed to parse JSON: {e}")
+        # Provide a fallback simple JSON structure
+        return {
+            "name": "Story start",
+            "children": [
+                {"name": "Error: Could not generate valid story JSON. Please try again."}
+            ]
+        }
 
 
 # Streamlit UI
