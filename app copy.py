@@ -246,7 +246,7 @@ if st.session_state.story_data:
             const processedData = processNode(JSON.parse(JSON.stringify(data)));
             
             // Set up tree visualization with vertical layout
-            const margin = {top: 50, right: 30, bottom: 50, left: 50};
+            const margin = {{top: 50, right: 30, bottom: 50, left: 50}};
             const width = document.getElementById('tree-container').clientWidth - margin.left - margin.right;
             const height = document.getElementById('tree-container').clientHeight - margin.top - margin.bottom;
             
@@ -255,7 +255,7 @@ if st.session_state.story_data:
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
-                .attr("transform", `translate(${width/2},${margin.top})`); // Center the tree horizontally
+                .attr("transform", `translate(${{width/2}},${{margin.top}})`); // Center the tree horizontally
             
             // Create tree layout - vertical orientation (top to bottom)
             const root = d3.hierarchy(processedData);
