@@ -57,84 +57,134 @@ if st.button('Generate Story'):
         st.write("Data structure for visualization:")
         st.write(story_data)
         
-        # D3.js HTML rendering
+        # Create a complete HTML document for D3.js visualization
         html_code = f'''
-            <div id="d3-container"></div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Branching Story Visualization</title>
             <script src="https://d3js.org/d3.v7.min.js"></script>
+            <style>
+                #d3-container {{
+                    width: 100%;
+                    height: 600px;
+                    overflow: auto;
+                }}
+                .link {{
+                    stroke: #999;
+                    stroke-width: 1.5px;
+                }}
+                .node circle {{
+                    fill: #69b3a2;
+                    stroke: #3a7759;
+                    stroke-width: 1.5px;
+                }}
+                .node text {{
+                    font: 12px sans-serif;
+                }}
+            </style>
+        </head>
+        <body>
+            <div id="d3-container"></div>
             <script>
+                // Data from Python
                 const data = {json.dumps(story_data)};
                 console.log("Data received in D3:", data);
-
-                const width = 800, height = 600;
-                const svg = d3.select("#d3-container").append("svg")
-                    .attr("width", width)
-                    .attr("height", height);
-
-                // Make sure we have valid data structure
-                if (!data || typeof data !== 'object') {{
-                    svg.append("text")
-                        .attr("x", width/2)
-                        .attr("y", height/2)
-                        .attr("text-anchor", "middle")
-                        .text("Invalid data structure for visualization");
-                    console.error("Invalid data:", data);
-                    return;
-                }}
-
-                // Create a default "name" property if it doesn't exist
-                const processNode = (node) => {{
-                    if (!node.name && node.title) node.name = node.title;
-                    if (!node.name && node.text) node.name = node.text;
-                    if (!node.name) node.name = "Unnamed Node";
-                    
-                    if (node.children && Array.isArray(node.children)) {{
-                        node.children.forEach(processNode);
-                    }}
-                }};
                 
-                processNode(data);
-
-                const root = d3.hierarchy(data);
-                const treeLayout = d3.tree().size([width - 100, height - 100]);
-                treeLayout(root);
-
-                const g = svg.append("g").attr("transform", "translate(50,50)");
-
-                // Links
-                g.selectAll(".link")
-                    .data(root.links())
-                    .enter()
-                    .append("line")
-                    .attr("class", "link")
-                    .attr("x1", function(d) {{ return d.source.x; }})
-                    .attr("y1", function(d) {{ return d.source.y; }})
-                    .attr("x2", function(d) {{ return d.target.x; }})
-                    .attr("y2", function(d) {{ return d.target.y; }})
-                    .attr("stroke", "#999");
-
-                // Nodes
-                const nodes = g.selectAll(".node")
-                    .data(root.descendants())
-                    .enter()
-                    .append("g")
-                    .attr("class", "node")
-                    .attr("transform", function(d) {{ return "translate(" + d.x + "," + d.y + ")"; }});
-
-                nodes.append("circle")
-                    .attr("r", 5)
-                    .attr("fill", "#69b3a2");
-
-                nodes.append("text")
-                    .attr("dy", -10)
-                    .attr("x", 6)
-                    .text(function(d) {{ 
-                        return d.data.name || "Unnamed"; 
-                    }});
+                document.addEventListener('DOMContentLoaded', function() {{
+                    // Get container dimensions
+                    const containerWidth = document.getElementById('d3-container').clientWidth;
+                    const width = containerWidth || 800;
+                    const height = 600;
+                    
+                    const svg = d3.select("#d3-container").append("svg")
+                        .attr("width", width)
+                        .attr("height", height)
+                        .append("g")
+                        .attr("transform", "translate(40,20)");
+                    
+                    // Make sure we have valid data structure
+                    if (!data || typeof data !== 'object') {{
+                        svg.append("text")
+                            .attr("x", width/2)
+                            .attr("y", height/2)
+                            .attr("text-anchor", "middle")
+                            .text("Invalid data structure for visualization");
+                        console.error("Invalid data:", data);
+                        return;
+                    }}
+                    
+                    // Process nodes to ensure they have name properties
+                    const processNode = (node) => {{
+                        if (!node.name && node.title) node.name = node.title;
+                        if (!node.name && node.text) node.name = node.text;
+                        if (!node.name) node.name = "Unnamed Node";
+                        
+                        if (node.children && Array.isArray(node.children)) {{
+                            node.children.forEach(processNode);
+                        }}
+                        return node;
+                    }};
+                    
+                    const processedData = processNode(JSON.parse(JSON.stringify(data)));
+                    
+                    try {{
+                        // Create the tree layout
+                        const root = d3.hierarchy(processedData);
+                        const treeLayout = d3.tree().size([height - 40, width - 160]);
+                        
+                        // This will position nodes
+                        const nodes = treeLayout(root);
+                        
+                        // Add links between nodes
+                        svg.selectAll(".link")
+                            .data(nodes.links())
+                            .enter()
+                            .append("path")
+                            .attr("class", "link")
+                            .attr("d", d3.linkHorizontal()
+                                .x(d => d.y)  // Swap x and y for horizontal layout
+                                .y(d => d.x)
+                            );
+                        
+                        // Add nodes
+                        const node = svg.selectAll(".node")
+                            .data(nodes.descendants())
+                            .enter()
+                            .append("g")
+                            .attr("class", "node")
+                            .attr("transform", d => `translate(${{d.y}},${{d.x}})`);
+                        
+                        // Add circles to nodes
+                        node.append("circle")
+                            .attr("r", 6);
+                        
+                        // Add labels to nodes
+                        node.append("text")
+                            .attr("dy", 3)
+                            .attr("x", d => d.children ? -8 : 8)
+                            .style("text-anchor", d => d.children ? "end" : "start")
+                            .text(d => d.data.name);
+                            
+                        console.log("Visualization completed");
+                    }} catch (error) {{
+                        console.error("Error rendering visualization:", error);
+                        svg.append("text")
+                            .attr("x", width/2)
+                            .attr("y", height/2)
+                            .attr("text-anchor", "middle")
+                            .text("Error rendering visualization: " + error.message);
+                    }}
+                }});
             </script>
+        </body>
+        </html>
         '''
 
         # Render HTML with D3.js
-        html(html_code, height=700)
+        # Increase the height and add scrolling to ensure the visualization is visible
+        html(html_code, height=700, scrolling=True)
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
