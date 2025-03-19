@@ -1,4 +1,29 @@
-import streamlit as st
+// Post-process node positions for branches
+            // This ensures branches are spaced properly
+            root.descendants().forEach(function(d) {
+                // For nodes with multiple children (branching points)
+                if (d.children && d.children.length > 1) {
+                    // Calculate the width needed for the branches
+                    const branchWidth = d.children.length * 80;
+                    
+                    // Adjust positions of child nodes
+                    d.children.forEach(function(child, i) {
+                        const offset = branchWidth * (i / (d.children.length - 1) - 0.5);
+                        child.x = d.x + offset;
+                        
+                        // Recursively adjust positions of all descendants
+                        function adjustDescendants(node) {
+                            if (node.children) {
+                                node.children.forEach(function(c) {
+                                    c.x += offset;
+                                    adjustDescendants(c);
+                                });
+                            }
+                        }
+                        adjustDescendants(child);
+                    });
+                }
+            });import streamlit as st
 from openai import OpenAI
 import json
 from streamlit.components.v1 import html
@@ -175,10 +200,12 @@ if st.session_state.story_data:
             }
             #tree-container {
                 flex: 2;
+                height: 550px;
                 overflow: auto;
                 border: 1px solid #ddd;
                 border-radius: 5px;
-                padding: 10px;
+                padding: 20px;
+                margin-bottom: 10px;
             }
             #detail-panel {
                 flex: 1;
@@ -255,7 +282,10 @@ if st.session_state.story_data:
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
-                .attr("transform", "translate(" + (width/2) + "," + margin.top + ")"); // Center horizontally
+                .attr("transform", "translate(" + (width/2) + "," + margin.top + ")")
+                .call(d3.zoom().on("zoom", function(event) {
+                    svg.attr("transform", event.transform);
+                }));
             
             // Add arrowhead definitions to SVG
             svg.append("defs").selectAll("marker")
