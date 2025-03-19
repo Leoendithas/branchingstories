@@ -485,7 +485,6 @@ if st.session_state.story_data:
                 full_prompt = f"""
                 {selected_node_context}
                 
-                Create new story branches that continue from this point.
                 {extension_prompt}
                 """
                 
