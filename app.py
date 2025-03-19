@@ -139,9 +139,7 @@ col1, col2 = st.columns([1, 1])
 with col1:
     # Main story prompt
     prompt = st.text_area('Enter your prompt for the main storyline:',
-                        "Create a story about a student's day at school.")
-    
-    st.markdown("*Note: This will create a linear story with no branches. You can add branches later.*")
+                        "Create a branching story about a student's day at school with initial choices.")
     
     generate_button = st.button('Generate Story')
 
@@ -152,7 +150,7 @@ if 'story_data' not in st.session_state:
 # Handle story generation
 if generate_button:
     with st.spinner('Generating story...'):
-        st.session_state.story_data = get_story_json(prompt, is_initial_story=True)
+        st.session_state.story_data = get_story_json(prompt)
 
 # Render visualization if we have data
 if st.session_state.story_data:
@@ -263,9 +261,9 @@ if st.session_state.story_data:
             // Count nodes to determine layout size
             const nodeCount = root.descendants().length;
             
-            // Create vertical tree layout (top to bottom)
+            // Create horizontal tree layout
             const treeLayout = d3.tree()
-                .size([width - 100, height - 50]);  // Width, height for vertical layout
+                .size([height, width - 200]);  // Make more horizontal space for the diagram
             
             // Apply the layout
             treeLayout(root);
@@ -276,9 +274,9 @@ if st.session_state.story_data:
                 .enter()
                 .append("path")
                 .attr("class", "link")
-                .attr("d", d3.linkVertical()
-                    .x(d => d.x)
-                    .y(d => d.y)
+                .attr("d", d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x)
                 );
             
             // Create node groups
