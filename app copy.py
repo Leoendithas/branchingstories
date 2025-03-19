@@ -274,9 +274,9 @@ if st.session_state.story_data:
                 .enter()
                 .append("path")
                 .attr("class", "link")
-                .attr("d", d => {
-                    return `M${d.source.x},${d.source.y}
-                            L${d.target.x},${d.target.y}`;
+                .attr("d", function(d) {
+                    return "M" + d.source.x + "," + d.source.y +
+                           "L" + d.target.x + "," + d.target.y;
                 });
             
             // Create node groups
