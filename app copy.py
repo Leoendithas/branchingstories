@@ -245,8 +245,8 @@ if st.session_state.story_data:
             
             const processedData = processNode(JSON.parse(JSON.stringify(data)));
             
-            // Set up tree visualization
-            const margin = {{top: 30, right: 30, bottom: 30, left: 50}};
+            // Set up tree visualization with vertical layout
+            const margin = {top: 50, right: 30, bottom: 50, left: 50};
             const width = document.getElementById('tree-container').clientWidth - margin.left - margin.right;
             const height = document.getElementById('tree-container').clientHeight - margin.top - margin.bottom;
             
@@ -255,31 +255,29 @@ if st.session_state.story_data:
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
-                .attr("transform", `translate(${{margin.left}},${{margin.top}})`);
+                .attr("transform", `translate(${width/2},${margin.top})`); // Center the tree horizontally
             
-            // Create tree layout
+            // Create tree layout - vertical orientation (top to bottom)
             const root = d3.hierarchy(processedData);
-            
-            // Count nodes to determine layout size
             const nodeCount = root.descendants().length;
             
-            // Create vertical tree layout (top to bottom)
+            // Adjust the layout based on the number of nodes
             const treeLayout = d3.tree()
-                .size([width - 100, height - 50]);  // Width, height for vertical layout
+                .size([width * 0.8, height * 0.8]); // Use most of the width, but keep vertical
             
             // Apply the layout
             treeLayout(root);
             
-            // Add links
+            // Add links - using straight lines for clearer vertical layout
             const link = svg.selectAll(".link")
                 .data(root.links())
                 .enter()
                 .append("path")
                 .attr("class", "link")
-                .attr("d", d3.linkVertical()
-                    .x(d => d.x)
-                    .y(d => d.y)
-                );
+                .attr("d", d => {
+                    return `M${d.source.x},${d.source.y}
+                            L${d.target.x},${d.target.y}`;
+                });
             
             // Create node groups
             const node = svg.selectAll(".node")
