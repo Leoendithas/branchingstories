@@ -1,4 +1,19 @@
-import streamlit as st
+// Add arrowheads to the links
+            svg.append("defs").selectAll("marker")
+                .data(["arrow"]) // Define the marker
+                .enter().append("marker")
+                .attr("id", function(d) { return d; })
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 10)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5");
+                
+            // Apply the arrow marker to the links
+            link.attr("marker-end", "url(#arrow)");import streamlit as st
 from openai import OpenAI
 import json
 from streamlit.components.v1 import html
@@ -261,9 +276,14 @@ if st.session_state.story_data:
             const root = d3.hierarchy(processedData);
             const nodeCount = root.descendants().length;
             
-            // Adjust the layout based on the number of nodes
+            // Create a Y-axis spacing variable based on the number of nodes
+            const ySpacing = Math.min(120, (height * 0.8) / (nodeCount + 1));
+            
+            // Create tree layout - vertical orientation (top to bottom)
             const treeLayout = d3.tree()
-                .size([width * 0.8, height * 0.8]); // Use most of the width, but keep vertical
+                .size([width * 0.7, nodeCount <= 5 ? height * 0.7 : height * 0.85]) // Adaptive sizing
+                .nodeSize([0, ySpacing]) // Set consistent vertical spacing between nodes
+                .separation(function(a, b) { return 3; }); // Increase horizontal separation between nodes
             
             // Apply the layout
             treeLayout(root);
@@ -456,6 +476,6 @@ if st.session_state.story_data:
                     if success:
                         st.success(f"Successfully added {len(branch_options)} new branches to the story!")
                         # Force a rerun to update the visualization
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.error("Failed to update the story structure. Please try again.")
