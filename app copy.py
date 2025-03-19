@@ -476,7 +476,7 @@ if st.session_state.story_data:
         
         extension_prompt = st.text_area(
             "How would you like to extend this branch?", 
-            f"Continue the story after '{selected_node.split('→ ')[-1]}' with multiple possible paths."
+            f"Create two additional branches from '{selected_node.split('→ ')[-1]}'"
         )
         
         if st.button("Extend Branch"):
