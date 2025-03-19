@@ -53,17 +53,46 @@ if st.button('Generate Story'):
     try:
         story_data = get_story_json(prompt)
 
+        # Log the structure before visualization
+        st.write("Data structure for visualization:")
+        st.write(story_data)
+        
         # D3.js HTML rendering
         html_code = f'''
             <div id="d3-container"></div>
             <script src="https://d3js.org/d3.v7.min.js"></script>
             <script>
                 const data = {json.dumps(story_data)};
+                console.log("Data received in D3:", data);
 
                 const width = 800, height = 600;
                 const svg = d3.select("#d3-container").append("svg")
                     .attr("width", width)
                     .attr("height", height);
+
+                // Make sure we have valid data structure
+                if (!data || typeof data !== 'object') {{
+                    svg.append("text")
+                        .attr("x", width/2)
+                        .attr("y", height/2)
+                        .attr("text-anchor", "middle")
+                        .text("Invalid data structure for visualization");
+                    console.error("Invalid data:", data);
+                    return;
+                }}
+
+                // Create a default "name" property if it doesn't exist
+                const processNode = (node) => {{
+                    if (!node.name && node.title) node.name = node.title;
+                    if (!node.name && node.text) node.name = node.text;
+                    if (!node.name) node.name = "Unnamed Node";
+                    
+                    if (node.children && Array.isArray(node.children)) {{
+                        node.children.forEach(processNode);
+                    }}
+                }};
+                
+                processNode(data);
 
                 const root = d3.hierarchy(data);
                 const treeLayout = d3.tree().size([width - 100, height - 100]);
@@ -77,10 +106,10 @@ if st.button('Generate Story'):
                     .enter()
                     .append("line")
                     .attr("class", "link")
-                    .attr("x1", d => d.source.x)
-                    .attr("y1", d => d.source.y)
-                    .attr("x2", d => d.target.x)
-                    .attr("y2", d => d.target.y)
+                    .attr("x1", function(d) {{ return d.source.x; }})
+                    .attr("y1", function(d) {{ return d.source.y; }})
+                    .attr("x2", function(d) {{ return d.target.x; }})
+                    .attr("y2", function(d) {{ return d.target.y; }})
                     .attr("stroke", "#999");
 
                 // Nodes
@@ -89,7 +118,7 @@ if st.button('Generate Story'):
                     .enter()
                     .append("g")
                     .attr("class", "node")
-                    .attr("transform", d => `translate(${d.x},${d.y})`);
+                    .attr("transform", function(d) {{ return "translate(" + d.x + "," + d.y + ")"; }});
 
                 nodes.append("circle")
                     .attr("r", 5)
@@ -98,7 +127,9 @@ if st.button('Generate Story'):
                 nodes.append("text")
                     .attr("dy", -10)
                     .attr("x", 6)
-                    .text(d => d.data.name);
+                    .text(function(d) {{ 
+                        return d.data.name || "Unnamed"; 
+                    }});
             </script>
         '''
 
