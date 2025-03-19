@@ -6,15 +6,66 @@ from streamlit.components.v1 import html
 # Initialize the OpenAI client correctly
 client = OpenAI(api_key=st.secrets["api_keys"]["openai"])
 
-def get_story_json(prompt):
+def get_story_json(prompt, is_initial_story=True):
+    system_message = ""
+    if is_initial_story:
+        # For the initial story, create a simple linear narrative
+        system_message = """You are a storyteller. Create a linear story with a beginning, middle, and end. 
+        Respond with valid JSON that represents a simple, linear narrative. 
+        
+        The JSON should have this structure:
+        {
+          "name": "Main Story Title",
+          "description": "A paragraph describing the overall story theme.",
+          "children": [
+            {
+              "name": "First Story Node",
+              "description": "Detailed paragraph about this part of the story.",
+              "children": [
+                {
+                  "name": "Second Story Node",
+                  "description": "Next part of the story...",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+        
+        Create EXACTLY 5 nodes in a linear chain (each one having only ONE child, except the last node).
+        Do not include any branching choices at this stage."""
+    else:
+        # For extending a branch, create multiple choices
+        system_message = """You are a branching story generator. 
+        Respond with valid JSON that represents new branches for an existing story.
+        
+        The JSON should have an array of story options, each with a 'name' field for the node title,
+        a 'description' field with a detailed paragraph, and an empty 'children' array.
+        
+        Format:
+        [
+          {
+            "name": "Option 1 Title",
+            "description": "Detailed description of what happens in this branch.",
+            "children": []
+          },
+          {
+            "name": "Option 2 Title",
+            "description": "Detailed description of what happens in this branch.",
+            "children": []
+          }
+        ]
+        
+        Create 2-3 interesting and distinct branching options."""
+    
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a branching story generator. Always respond with valid JSON that represents a tree structure for a branching story. The JSON should have a 'name' field for the node title, a 'description' field for a short paragraph about this node, and a 'children' array for branching options."},
+            {"role": "system", "content": system_message},
             {"role": "user", "content": prompt}
         ],
         max_tokens=800,
-        temperature=0.1
+        temperature=0.7  # Slightly higher temperature for more creative responses
     )
     story_content = response.choices[0].message.content
     
@@ -23,8 +74,7 @@ def get_story_json(prompt):
     st.write(story_content)
     
     # Try to clean the response if it's not pure JSON
-    # Sometimes the API might return markdown-formatted JSON or add explanatory text
-    if not story_content.strip().startswith('{'):
+    if not story_content.strip().startswith('{') and not story_content.strip().startswith('['):
         # Try to extract JSON from the response (if wrapped in ```json or similar)
         import re
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', story_content)
@@ -35,23 +85,50 @@ def get_story_json(prompt):
         return json.loads(story_content)
     except json.JSONDecodeError as e:
         st.error(f"Failed to parse JSON: {e}")
-        # Provide a fallback simple JSON structure
-        return {
-            "name": "Student",
-            "description": "A day in the life of a student begins with a choice.",
-            "children": [
+        # Provide a fallback structure
+        if is_initial_story:
+            return {
+                "name": "Student's Day",
+                "description": "A day in the life of a student following a linear narrative.",
+                "children": [
+                    {
+                        "name": "Morning Begins",
+                        "description": "The student starts their day with their morning routine.",
+                        "children": [
+                            {
+                                "name": "Heading to School",
+                                "description": "After getting ready, the student heads to school.",
+                                "children": [
+                                    {
+                                        "name": "First Class",
+                                        "description": "The student attends their first class of the day.",
+                                        "children": [
+                                            {
+                                                "name": "End of Day",
+                                                "description": "The student completes their day and heads home.",
+                                                "children": []
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        else:
+            return [
                 {
-                    "name": "Wake Up Early",
-                    "description": "You decide to wake up early and start your day with plenty of time.",
+                    "name": "Option A",
+                    "description": "This is the first possible branch of the story.",
                     "children": []
                 },
                 {
-                    "name": "Wake Up Late",
-                    "description": "You hit the snooze button too many times and now you're running late.",
+                    "name": "Option B",
+                    "description": "This is the second possible branch of the story.",
                     "children": []
                 }
             ]
-        }
 
 # Streamlit UI setup
 st.title('Branching Story Visualizer')
@@ -62,7 +139,9 @@ col1, col2 = st.columns([1, 1])
 with col1:
     # Main story prompt
     prompt = st.text_area('Enter your prompt for the main storyline:',
-                        "Create a branching story about a student's day at school with initial choices.")
+                        "Create a story about a student's day at school.")
+    
+    st.markdown("*Note: This will create a linear story with no branches. You can add branches later.*")
     
     generate_button = st.button('Generate Story')
 
@@ -73,7 +152,7 @@ if 'story_data' not in st.session_state:
 # Handle story generation
 if generate_button:
     with st.spinner('Generating story...'):
-        st.session_state.story_data = get_story_json(prompt)
+        st.session_state.story_data = get_story_json(prompt, is_initial_story=True)
 
 # Render visualization if we have data
 if st.session_state.story_data:
@@ -284,31 +363,101 @@ if st.session_state.story_data:
     st.markdown("---")
     st.subheader("Extend The Story")
     
-    # Choose a node to extend
-    node_options = ["Select a node to extend..."]
+    # Store path information for each node to find it later
+    if 'node_paths' not in st.session_state:
+        st.session_state.node_paths = {}
     
-    # Function to recursively extract node names (simplified)
-    def extract_node_names(node, prefix=""):
+    # Function to recursively extract node names with paths
+    def extract_node_paths(node, path=None, prefix=""):
+        if path is None:
+            path = []
+        
         result = []
+        current_path = path.copy()
         name = prefix + node.get("name", "Unnamed")
+        
+        # Store the full path to this node
+        st.session_state.node_paths[name] = current_path
+        
         result.append(name)
-        for child in node.get("children", []):
-            result.extend(extract_node_names(child, prefix + "→ "))
+        
+        for i, child in enumerate(node.get("children", [])):
+            child_path = current_path.copy()
+            child_path.append(i)
+            child_results = extract_node_paths(child, child_path, prefix + "→ ")
+            result.extend(child_results)
+            
         return result
     
-    # Get all node names
+    # Find a node using the stored path
+    def get_node_by_path(root, path):
+        node = root
+        for index in path:
+            if index < len(node.get("children", [])):
+                node = node["children"][index]
+            else:
+                return None
+        return node
+    
+    # Get all node names with their paths
+    node_options = ["Select a node to extend..."]
     if st.session_state.story_data:
-        node_options.extend(extract_node_names(st.session_state.story_data))
+        st.session_state.node_paths = {}  # Reset paths
+        node_options.extend(extract_node_paths(st.session_state.story_data))
     
     selected_node = st.selectbox("Select a node to extend:", node_options)
     
     # Only show extension options if a real node is selected
     if selected_node != "Select a node to extend...":
+        # Get context for the selected node to help the AI generate relevant branches
+        selected_node_context = ""
+        if selected_node in st.session_state.node_paths:
+            path = st.session_state.node_paths[selected_node]
+            node = get_node_by_path(st.session_state.story_data, path)
+            if node:
+                selected_node_context = f"Selected node: {node.get('name')}\nDescription: {node.get('description')}"
+        
         extension_prompt = st.text_area(
             "How would you like to extend this branch?", 
-            "Add 2 new choices for what happens after this point in the story."
+            f"Continue the story after '{selected_node.split('→ ')[-1]}' with multiple possible paths."
         )
         
         if st.button("Extend Branch"):
-            st.write("This would extend the selected branch with new options.")
-            # This is where you would implement the branch extension logic
+            with st.spinner('Generating branch options...'):
+                # Create the full context for the API call
+                full_prompt = f"""
+                {selected_node_context}
+                
+                Create new story branches that continue from this point.
+                {extension_prompt}
+                """
+                
+                # Get branch options from the API
+                branch_options = get_story_json(full_prompt, is_initial_story=False)
+                
+                # Find the node to extend
+                if selected_node in st.session_state.node_paths:
+                    path = st.session_state.node_paths[selected_node]
+                    
+                    # Helper function to update the story tree
+                    def update_node_children(node, path, index, new_children):
+                        if index >= len(path):
+                            # We've reached the target node, update its children
+                            node["children"] = new_children
+                            return True
+                        
+                        if "children" not in node or index >= len(path) or path[index] >= len(node["children"]):
+                            return False
+                        
+                        # Continue traversing
+                        return update_node_children(node["children"][path[index]], path, index + 1, new_children)
+                    
+                    # Update the story tree
+                    success = update_node_children(st.session_state.story_data, path, 0, branch_options)
+                    
+                    if success:
+                        st.success(f"Successfully added {len(branch_options)} new branches to the story!")
+                        # Force a rerun to update the visualization
+                        st.experimental_rerun()
+                    else:
+                        st.error("Failed to update the story structure. Please try again.")
