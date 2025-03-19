@@ -161,26 +161,26 @@ if st.session_state.story_data:
         st.subheader("Story Structure")
         st.write("Click on nodes to view details")
     
-    # D3.js visualization with node details panel
-    visualization_html = f'''
+    # Create D3.js visualization HTML - using string concatenation instead of f-strings for JavaScript
+    visualization_html = '''
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
         <style>
-            #story-container {{
+            #story-container {
                 display: flex;
                 width: 100%;
                 height: 600px;
-            }}
-            #tree-container {{
+            }
+            #tree-container {
                 flex: 2;
                 overflow: auto;
                 border: 1px solid #ddd;
                 border-radius: 5px;
                 padding: 10px;
-            }}
-            #detail-panel {{
+            }
+            #detail-panel {
                 flex: 1;
                 padding: 15px;
                 background-color: #f5f7f9;
@@ -188,33 +188,33 @@ if st.session_state.story_data:
                 margin-left: 10px;
                 border-radius: 5px;
                 overflow: auto;
-            }}
-            .node circle {{
+            }
+            .node circle {
                 fill: #69b3a2;
                 stroke: #3a7759;
                 stroke-width: 1.5px;
-            }}
-            .node text {{
+            }
+            .node text {
                 font: 12px sans-serif;
                 fill: #333;
-            }}
-            .node:hover circle {{
+            }
+            .node:hover circle {
                 fill: #3a7759;
-            }}
-            .link {{
+            }
+            .link {
                 fill: none;
                 stroke: #ccc;
                 stroke-width: 2px;
-            }}
-            .selected-node circle {{
+            }
+            .selected-node circle {
                 fill: #ff7f0e;
                 stroke: #d26013;
                 stroke-width: 2px;
-            }}
-            h3 {{
+            }
+            h3 {
                 margin-top: 5px;
                 color: #333;
-            }}
+            }
         </style>
     </head>
     <body>
@@ -230,23 +230,23 @@ if st.session_state.story_data:
         <script src="https://d3js.org/d3.v7.min.js"></script>
         <script>
             // Data from Python
-            const data = {json.dumps(st.session_state.story_data)};
+            const data = ''' + json.dumps(st.session_state.story_data) + ''';
             
             // Process nodes to ensure they have proper properties
-            function processNode(node) {{
+            function processNode(node) {
                 if (!node.name) node.name = node.title || "Unnamed Node";
                 if (!node.description) node.description = node.text || "";
                 
-                if (node.children && Array.isArray(node.children)) {{
+                if (node.children && Array.isArray(node.children)) {
                     node.children.forEach(processNode);
-                }}
+                }
                 return node;
-            }}
+            }
             
             const processedData = processNode(JSON.parse(JSON.stringify(data)));
             
             // Set up tree visualization with vertical layout
-            const margin = {{top: 50, right: 30, bottom: 50, left: 50}};
+            const margin = {top: 50, right: 30, bottom: 50, left: 50};
             const width = document.getElementById('tree-container').clientWidth - margin.left - margin.right;
             const height = document.getElementById('tree-container').clientHeight - margin.top - margin.bottom;
             
@@ -255,8 +255,23 @@ if st.session_state.story_data:
                 .attr("width", width + margin.left + margin.right)
                 .attr("height", height + margin.top + margin.bottom)
                 .append("g")
-                .attr("transform", `translate(${{width/2}},${{margin.top}})`); // Center the tree horizontally
+                .attr("transform", "translate(" + (width/2) + "," + margin.top + ")"); // Center horizontally
             
+            // Add arrowhead definitions to SVG
+            svg.append("defs").selectAll("marker")
+                .data(["arrow"])
+                .enter().append("marker")
+                .attr("id", function(d) { return d; })
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 10)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5")
+                .attr("fill", "#999");
+                
             // Create tree layout - vertical orientation (top to bottom)
             const root = d3.hierarchy(processedData);
             const nodeCount = root.descendants().length;
@@ -268,30 +283,34 @@ if st.session_state.story_data:
             const treeLayout = d3.tree()
                 .size([width * 0.7, nodeCount <= 5 ? height * 0.7 : height * 0.85]) // Adaptive sizing
                 .nodeSize([0, ySpacing]) // Set consistent vertical spacing between nodes
-                .separation(function(a, b) { return 3; }); // Increase horizontal separation between nodes
+                .separation(function(a, b) { return 3; }); // Increase horizontal separation
             
             // Apply the layout
             treeLayout(root);
             
-            // Add links - using straight lines for clearer vertical layout
+            // Add links - using curved lines for better visualization
             const link = svg.selectAll(".link")
                 .data(root.links())
                 .enter()
                 .append("path")
                 .attr("class", "link")
-                .attr("d", function(d) {{
+                .attr("d", function(d) {
+                    // Create a gentle curve for the links
                     return "M" + d.source.x + "," + d.source.y +
-                           "L" + d.target.x + "," + d.target.y;
-                }});
+                           "C" + d.source.x + "," + (d.source.y + 50) +
+                           " " + d.target.x + "," + (d.target.y - 50) +
+                           " " + d.target.x + "," + d.target.y;
+                })
+                .attr("marker-end", "url(#arrow)");
             
             // Create node groups
             const node = svg.selectAll(".node")
                 .data(root.descendants())
                 .enter()
                 .append("g")
-                .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
-                .attr("transform", d => `translate(${{d.y}},${{d.x}})`)
-                .on("click", function(event, d) {{
+                .attr("class", function(d) { return "node" + (d.children ? " node--internal" : " node--leaf"); })
+                .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
+                .on("click", function(event, d) {
                     // Remove previous selection
                     d3.selectAll(".selected-node").classed("selected-node", false);
                     
@@ -300,22 +319,26 @@ if st.session_state.story_data:
                     
                     // Update detail panel
                     showNodeDetails(d.data);
-                }});
+                });
             
             // Add circles to nodes
             node.append("circle")
                 .attr("r", 5);
             
-            // Add text labels, with proper positioning and background for readability
+            // Add text labels with background rectangles for better readability
             node.append("text")
-                .attr("dy", -10)
+                .attr("dy", -20) // Move text higher above the node
                 .attr("x", 0)
                 .attr("text-anchor", "middle")
-                .text(d => d.data.name)
-                .each(function(d) {{
+                .text(function(d) { 
+                    // Truncate long node names to prevent overlap
+                    const name = d.data.name;
+                    return name.length > 20 ? name.substring(0, 18) + "..." : name;
+                })
+                .each(function(d) {
                     // Add background rectangle for text
                     const bbox = this.getBBox();
-                    const padding = 2;
+                    const padding = 3;
                     
                     d3.select(this.parentNode).insert("rect", "text")
                         .attr("x", bbox.x - padding)
@@ -323,54 +346,36 @@ if st.session_state.story_data:
                         .attr("width", bbox.width + (padding * 2))
                         .attr("height", bbox.height + (padding * 2))
                         .attr("fill", "white")
-                        .attr("fill-opacity", 0.8);
-                }});
+                        .attr("fill-opacity", 0.8)
+                        .attr("rx", 3)
+                        .attr("ry", 3);
+                });
             
             // Function to show node details
-            function showNodeDetails(nodeData) {{
+            function showNodeDetails(nodeData) {
                 const detailsDiv = document.getElementById('node-details');
                 
                 // Create HTML content
-                let content = `
-                    <h4>${{nodeData.name || 'Unnamed Node'}}</h4>
-                    <p>${{nodeData.description || 'No description available.'}}</p>
-                `;
+                let content = "<h4>" + (nodeData.name || 'Unnamed Node') + "</h4>" +
+                              "<p>" + (nodeData.description || 'No description available.') + "</p>";
                 
-                if (nodeData.children && nodeData.children.length > 0) {{
-                    content += `<p><strong>Options:</strong></p><ul>`;
-                    nodeData.children.forEach(child => {{
-                        content += `<li>${{child.name}}</li>`;
-                    }});
-                    content += `</ul>`;
-                }} else {{
-                    content += `<p><em>This is an endpoint of the story.</em></p>`;
-                }}
+                if (nodeData.children && nodeData.children.length > 0) {
+                    content += "<p><strong>Options:</strong></p><ul>";
+                    nodeData.children.forEach(function(child) {
+                        content += "<li>" + child.name + "</li>";
+                    });
+                    content += "</ul>";
+                } else {
+                    content += "<p><em>This is an endpoint of the story.</em></p>";
+                }
                 
                 detailsDiv.innerHTML = content;
-            }}
+            }
             
             // Select the root node initially
-            node.filter(d => !d.parent)
+            node.filter(function(d) { return !d.parent; })
                 .classed("selected-node", true)
-                .each(d => showNodeDetails(d.data));
-            
-            // Add arrowheads to the links
-            svg.append("defs").selectAll("marker")
-                .data(["arrow"]) // Define the marker
-                .enter().append("marker")
-                .attr("id", function(d) { return d; })
-                .attr("viewBox", "0 -5 10 10")
-                .attr("refX", 10)
-                .attr("refY", 0)
-                .attr("markerWidth", 6)
-                .attr("markerHeight", 6)
-                .attr("orient", "auto")
-                .append("path")
-                .attr("d", "M0,-5L10,0L0,5");
-                
-            // Apply the arrow marker to the links
-            link.attr("marker-end", "url(#arrow)");
-
+                .each(function(d) { showNodeDetails(d.data); });
         </script>
     </body>
     </html>
