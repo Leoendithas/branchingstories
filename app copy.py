@@ -1,14 +1,14 @@
 import streamlit as st
-from openai import openai
+from openai import OpenAI
 import json
 from streamlit.components.v1 import html
 
 # OpenAI API key (make sure to set this as an environment variable or replace it directly)
-openai.api_key = st.secrets['OPENAI_API_KEY']
+OpenAI.api_key = st.secrets['OPENAI_API_KEY']
 
 
 def get_story_json(prompt):
-    response = openai.ChatCompletion.create(
+    response = OpenAI.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a branching story generator."},
