@@ -476,7 +476,7 @@ if st.session_state.story_data:
         
         extension_prompt = st.text_area(
             "How would you like to extend this branch?", 
-            f"Create 2 additional paths from '{selected_node.split('→ ')[-1]}'"
+            f"Continue the story after '{selected_node.split('→ ')[-1]}' with multiple possible paths."
         )
         
         if st.button("Extend Branch"):
@@ -499,8 +499,15 @@ if st.session_state.story_data:
                     # Helper function to update the story tree
                     def update_node_children(node, path, index, new_children):
                         if index >= len(path):
-                            # We've reached the target node, update its children
-                            node["children"] = new_children
+                            # We've reached the target node, APPEND new children instead of replacing
+                            if "children" not in node:
+                                node["children"] = []
+                            
+                            # If this is a linear story node, preserve the existing child
+                            existing_children = node.get("children", [])
+                            
+                            # Append the new branches
+                            node["children"] = existing_children + new_children
                             return True
                         
                         if "children" not in node or index >= len(path) or path[index] >= len(node["children"]):
@@ -513,7 +520,17 @@ if st.session_state.story_data:
                     success = update_node_children(st.session_state.story_data, path, 0, branch_options)
                     
                     if success:
-                        st.success(f"Successfully added {len(branch_options)} new branches to the story!")
+                        # Get the node that was updated
+                        updated_node = get_node_by_path(st.session_state.story_data, path)
+                        branch_count = len(updated_node.get("children", []))
+                        original_count = branch_count - len(branch_options)
+                        
+                        if original_count > 0:
+                            message = f"Successfully added {len(branch_options)} new branches to the story while preserving the original {original_count} path(s)!"
+                        else:
+                            message = f"Successfully added {len(branch_options)} new branches to the story!"
+                        
+                        st.success(message)
                         # Force a rerun to update the visualization
                         st.rerun()
                     else:
