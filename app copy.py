@@ -263,9 +263,9 @@ if st.session_state.story_data:
             // Count nodes to determine layout size
             const nodeCount = root.descendants().length;
             
-            // Create horizontal tree layout
+            // Create vertical tree layout (top to bottom)
             const treeLayout = d3.tree()
-                .size([height, width - 200]);  // Make more horizontal space for the diagram
+                .size([width - 100, height - 50]);  // Width, height for vertical layout
             
             // Apply the layout
             treeLayout(root);
@@ -276,9 +276,9 @@ if st.session_state.story_data:
                 .enter()
                 .append("path")
                 .attr("class", "link")
-                .attr("d", d3.linkHorizontal()
-                    .x(d => d.y)
-                    .y(d => d.x)
+                .attr("d", d3.linkVertical()
+                    .x(d => d.x)
+                    .y(d => d.y)
                 );
             
             // Create node groups
@@ -305,9 +305,9 @@ if st.session_state.story_data:
             
             // Add text labels, with proper positioning and background for readability
             node.append("text")
-                .attr("dy", 3)
-                .attr("x", d => d.children ? -10 : 10)
-                .attr("text-anchor", d => d.children ? "end" : "start")
+                .attr("dy", -10)
+                .attr("x", 0)
+                .attr("text-anchor", "middle")
                 .text(d => d.data.name)
                 .each(function(d) {{
                     // Add background rectangle for text
