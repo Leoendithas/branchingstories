@@ -1,29 +1,4 @@
-// Post-process node positions for branches
-            // This ensures branches are spaced properly
-            root.descendants().forEach(function(d) {
-                // For nodes with multiple children (branching points)
-                if (d.children && d.children.length > 1) {
-                    // Calculate the width needed for the branches
-                    const branchWidth = d.children.length * 80;
-                    
-                    // Adjust positions of child nodes
-                    d.children.forEach(function(child, i) {
-                        const offset = branchWidth * (i / (d.children.length - 1) - 0.5);
-                        child.x = d.x + offset;
-                        
-                        // Recursively adjust positions of all descendants
-                        function adjustDescendants(node) {
-                            if (node.children) {
-                                node.children.forEach(function(c) {
-                                    c.x += offset;
-                                    adjustDescendants(c);
-                                });
-                            }
-                        }
-                        adjustDescendants(child);
-                    });
-                }
-            });import streamlit as st
+import streamlit as st
 from openai import OpenAI
 import json
 from streamlit.components.v1 import html
@@ -83,33 +58,33 @@ def get_story_json(prompt, is_initial_story=True):
         
         Create 2-3 interesting and distinct branching options."""
     
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=800,
-        temperature=0.7  # Slightly higher temperature for more creative responses
-    )
-    story_content = response.choices[0].message.content
-    
-    # Debug the response
-    st.write("Raw API response:")
-    st.write(story_content)
-    
-    # Try to clean the response if it's not pure JSON
-    if not story_content.strip().startswith('{') and not story_content.strip().startswith('['):
-        # Try to extract JSON from the response (if wrapped in ```json or similar)
-        import re
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', story_content)
-        if json_match:
-            story_content = json_match.group(1)
-    
     try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=800,
+            temperature=0.7  # Slightly higher temperature for more creative responses
+        )
+        story_content = response.choices[0].message.content
+        
+        # Try to clean the response if it's not pure JSON
+        if "```json" in story_content or "```" in story_content:
+            # Try to extract JSON from the response (if wrapped in ```json or similar)
+            import re
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', story_content)
+            if json_match:
+                story_content = json_match.group(1)
+        
+        # Try to parse the JSON
         return json.loads(story_content)
-    except json.JSONDecodeError as e:
-        st.error(f"Failed to parse JSON: {e}")
+    
+    except (json.JSONDecodeError, Exception) as e:
+        st.error(f"Failed to parse JSON response: {e}")
+        st.write("Raw response:", story_content)
+        
         # Provide a fallback structure
         if is_initial_story:
             return {
@@ -317,6 +292,32 @@ if st.session_state.story_data:
             
             // Apply the layout
             treeLayout(root);
+            
+            // Post-process node positions for branches - INTEGRATION OF MISSING CODE
+            root.descendants().forEach(function(d) {
+                // For nodes with multiple children (branching points)
+                if (d.children && d.children.length > 1) {
+                    // Calculate the width needed for the branches
+                    const branchWidth = d.children.length * 80;
+                    
+                    // Adjust positions of child nodes
+                    d.children.forEach(function(child, i) {
+                        const offset = branchWidth * (i / (d.children.length - 1) - 0.5);
+                        child.x = d.x + offset;
+                        
+                        // Recursively adjust positions of all descendants
+                        function adjustDescendants(node) {
+                            if (node.children) {
+                                node.children.forEach(function(c) {
+                                    c.x += offset;
+                                    adjustDescendants(c);
+                                });
+                            }
+                        }
+                        adjustDescendants(child);
+                    });
+                }
+            });
             
             // Add links - using curved lines for better visualization
             const link = svg.selectAll(".link")
