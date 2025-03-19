@@ -1,19 +1,4 @@
-// Add arrowheads to the links
-            svg.append("defs").selectAll("marker")
-                .data(["arrow"]) // Define the marker
-                .enter().append("marker")
-                .attr("id", function(d) { return d; })
-                .attr("viewBox", "0 -5 10 10")
-                .attr("refX", 10)
-                .attr("refY", 0)
-                .attr("markerWidth", 6)
-                .attr("markerHeight", 6)
-                .attr("orient", "auto")
-                .append("path")
-                .attr("d", "M0,-5L10,0L0,5");
-                
-            // Apply the arrow marker to the links
-            link.attr("marker-end", "url(#arrow)");import streamlit as st
+import streamlit as st
 from openai import OpenAI
 import json
 from streamlit.components.v1 import html
@@ -368,6 +353,24 @@ if st.session_state.story_data:
             node.filter(d => !d.parent)
                 .classed("selected-node", true)
                 .each(d => showNodeDetails(d.data));
+            
+            // Add arrowheads to the links
+            svg.append("defs").selectAll("marker")
+                .data(["arrow"]) // Define the marker
+                .enter().append("marker")
+                .attr("id", function(d) { return d; })
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 10)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5");
+                
+            // Apply the arrow marker to the links
+            link.attr("marker-end", "url(#arrow)");
+
         </script>
     </body>
     </html>
