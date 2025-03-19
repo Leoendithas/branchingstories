@@ -3,11 +3,11 @@ from openai import OpenAI
 import json
 from streamlit.components.v1 import html
 
-# OpenAI API key (make sure to set this as an environment variable or replace it directly)
-OpenAI.api_key = OpenAI(api_key=st.secrets["api_keys"]["openai"])
+# Initialize the OpenAI client correctly
+client = OpenAI(api_key=st.secrets["api_keys"]["openai"])
 
 def get_story_json(prompt):
-    response = OpenAI.chat.completions.create(
+    response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are a branching story generator."},
@@ -15,9 +15,9 @@ def get_story_json(prompt):
         ],
         max_tokens=800,
         temperature=0.1
-        )
-    story_json = response['choices'][0]['message']['content']
-    return json.loads(story_json)
+    )
+    story_content = response.choices[0].message.content
+    return json.loads(story_content)
 
 
 # Streamlit UI
