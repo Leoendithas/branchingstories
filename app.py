@@ -132,7 +132,7 @@ def get_story_json(prompt, is_initial_story=True, is_merge_branch=False, merge_t
                     }
                 ]
             }
-                            elif is_merge_branch:
+        elif is_merge_branch:
             return {
                 "name": "Return to Main Story",
                 "description": "This branch converges back to the main storyline.",
