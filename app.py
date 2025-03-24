@@ -132,7 +132,7 @@ def get_story_json(prompt, is_initial_story=True, is_merge_branch=False, merge_t
                     }
                 ]
             }
-        elif is_merge_branch:
+                            elif is_merge_branch:
             return {
                 "name": "Return to Main Story",
                 "description": "This branch converges back to the main storyline.",
@@ -200,6 +200,55 @@ def update_node_children(node, path, index, new_children):
     # Continue traversing
     return update_node_children(node["children"][path[index]], path, index + 1, new_children)
 
+class StoryNode:
+    def __init__(self, id, name, description, is_merge_point=False, merge_target_id=None):
+        self.id = id
+        self.name = name
+        self.description = description
+        self.is_merge_point = is_merge_point
+        self.merge_target_id = merge_target_id
+        self.children = []
+    
+    def to_dict(self):
+        result = {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "children": [child.to_dict() for child in self.children]
+        }
+        if self.is_merge_point:
+            result["is_merge_point"] = True
+            result["merge_target_id"] = self.merge_target_id
+        return result
+
+# Helper function to update the story data structure
+def process_merge_branch(story_data):
+    """Process the story data to handle merge branches properly"""
+    # Create a mapping of node IDs to their objects
+    node_map = {}
+    
+    # Function to recursively collect all nodes
+    def collect_nodes(node, parent=None):
+        node_id = node.get("id")
+        if node_id:
+            node_map[node_id] = {"node": node, "parent": parent}
+        
+        for child in node.get("children", []):
+            collect_nodes(child, node)
+    
+    # Collect all nodes
+    collect_nodes(story_data)
+    
+    # Now process merge points
+    merge_points = []
+    for node_id, data in node_map.items():
+        node = data["node"]
+        if node.get("is_merge_point") and node.get("merge_target_id"):
+            merge_points.append(node)
+    
+    # Return the processed data and mappings
+    return story_data, node_map, merge_points
+
 # Streamlit UI setup
 st.title('Branching Story Visualizer')
 
@@ -225,6 +274,8 @@ if generate_button:
         story_data = get_story_json(prompt, is_initial_story=True)
         # Assign unique IDs to all nodes
         st.session_state.story_data = assign_node_ids(story_data)
+        # Process merge branches
+        st.session_state.story_data, _, _ = process_merge_branch(st.session_state.story_data)
 
 # Render visualization if we have data
 if st.session_state.story_data:
@@ -382,7 +433,9 @@ if st.session_state.story_data:
                 .attr("orient", "auto")
                 .append("path")
                 .attr("d", "M0,-5L10,0L0,5")
-                .attr("fill", d => d === "merge-arrow" ? "#a98adc" : "#999");
+                .attr("fill", function(d) { return d === "merge-arrow" ? "#a98adc" : "#999"; })
+                .attr("stroke", function(d) { return d === "merge-arrow" ? "#7e53c5" : "#666"; })
+                .attr("stroke-width", 1);
                 
                             // Create tree layout - vertical orientation (top to bottom)
             const root = d3.hierarchy(processedData);
@@ -458,34 +511,66 @@ if st.session_state.story_data:
                 })
                 .attr("marker-end", "url(#arrow)");
             
-            // Process merge links
-            const mergeData = [];
-            mergePoints.forEach((data, id) => {
-                const targetNode = nodeMap.get(data.targetId);
-                if (targetNode) {
-                    mergeData.push({
-                        source: data.source, 
-                        target: targetNode,
-                        sourceData: data.source.data,
-                        targetData: targetNode.data
-                    });
+            // Add merge links
+            const mergeLinks = [];
+            function collectMergeLinks(node, ancestors = []) {
+                if (node.data && node.data.is_merge_point && node.data.merge_target_id) {
+                    const targetNode = nodeMap.get(node.data.merge_target_id);
+                    if (targetNode) {
+                        mergeLinks.push({
+                            source: node,
+                            target: targetNode,
+                            isMergeLink: true
+                        });
+                    }
                 }
-            });
+                
+                if (node.children) {
+                    const newAncestors = [...ancestors, node];
+                    node.children.forEach(child => collectMergeLinks(child, newAncestors));
+                }
+            }
+            
+            collectMergeLinks(root);
             
             // Add merge links
             const mergeLink = svg.selectAll(".merge-link")
-                .data(mergeData)
+                .data(mergeLinks)
                 .enter()
                 .append("path")
                 .attr("class", "link merge-link")
+            .style("stroke-width", 2.5)
+            .style("stroke-dasharray", "5,5")
                 .attr("d", function(d) {
                     // Create a curved path from source to target
-                    const midX = (d.source.x + d.target.x) / 2;
-                    const midY = Math.min(d.source.y, d.target.y) - 30;
+                    // Calculate control points for a more natural curve
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
                     
-                    return "M" + d.source.x + "," + d.source.y +
-                           "Q" + midX + "," + midY +
-                           " " + d.target.x + "," + d.target.y;
+                    // Use different curve styles based on relative positions
+                    if (d.target.y < d.source.y) {
+                        // Target is above source - curve upward
+                        const midX = (d.source.x + d.target.x) / 2;
+                        const midY = d.target.y - 30; // Control point above target
+                        
+                        return "M" + d.source.x + "," + d.source.y +
+                               "Q" + midX + "," + midY +
+                               " " + d.target.x + "," + d.target.y;
+                    } else if (Math.abs(d.source.x - d.target.x) > 100) {
+                        // Target is far to the side - use an S-curve
+                        return "M" + d.source.x + "," + d.source.y +
+                               "C" + (d.source.x) + "," + (d.source.y + 50) +
+                               " " + (d.target.x) + "," + (d.target.y - 50) +
+                               " " + d.target.x + "," + d.target.y;
+                    } else {
+                        // Default curve
+                        const midX = (d.source.x + d.target.x) / 2;
+                        const midY = (d.source.y + d.target.y) / 2 - 30;
+                        
+                        return "M" + d.source.x + "," + d.source.y +
+                               "Q" + midX + "," + midY +
+                               " " + d.target.x + "," + d.target.y;
+                    }
                 })
                 .attr("marker-end", "url(#merge-arrow)");
             
@@ -787,6 +872,9 @@ if st.session_state.story_data:
                         success = update_node_children(st.session_state.story_data, path, 0, merge_branch)
                         
                         if success:
+                            # Process merge branches
+                            st.session_state.story_data, _, _ = process_merge_branch(st.session_state.story_data)
+                            
                             st.success(f"Successfully added a merge branch that connects back to the main story at '{merge_target.split(' (ID:')[0]}'!")
                             # Force a rerun to update the visualization
                             st.rerun()
