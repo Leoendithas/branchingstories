@@ -177,6 +177,29 @@ def find_node_by_id(node, target_id):
     
     return None
 
+# Helper function to update node children - defined at global scope
+def update_node_children(node, path, index, new_children):
+    if index >= len(path):
+        # We've reached the target node, APPEND new children instead of replacing
+        if "children" not in node:
+            node["children"] = []
+        
+        # If this is a linear story node, preserve the existing child
+        existing_children = node.get("children", [])
+        
+        # Check if we're adding a list of children or a single child
+        if isinstance(new_children, list):
+            node["children"] = existing_children + new_children
+        else:
+            node["children"] = existing_children + [new_children]
+        return True
+    
+    if "children" not in node or index >= len(path) or path[index] >= len(node["children"]):
+        return False
+    
+    # Continue traversing
+    return update_node_children(node["children"][path[index]], path, index + 1, new_children)
+
 # Streamlit UI setup
 st.title('Branching Story Visualizer')
 
@@ -631,25 +654,7 @@ if st.session_state.story_data:
                     if selected_node in st.session_state.node_paths:
                         path = st.session_state.node_paths[selected_node]
                         
-                        # Helper function to update the story tree
-                        def update_node_children(node, path, index, new_children):
-                            if index >= len(path):
-                                # We've reached the target node, APPEND new children instead of replacing
-                                if "children" not in node:
-                                    node["children"] = []
-                                
-                                # If this is a linear story node, preserve the existing child
-                                existing_children = node.get("children", [])
-                                
-                                # Append the new branches
-                                node["children"] = existing_children + new_children
-                                return True
-                            
-                            if "children" not in node or index >= len(path) or path[index] >= len(node["children"]):
-                                return False
-                            
-                            # Continue traversing
-                            return update_node_children(node["children"][path[index]], path, index + 1, new_children)
+                        # Use the global update_node_children function
                         
                         # Update the story tree
                         success = update_node_children(st.session_state.story_data, path, 0, branch_options)
@@ -765,22 +770,4 @@ if st.session_state.story_data:
                         else:
                             st.error("Failed to update the story structure. Please try again.")
                         
-                        # Helper function to update the story tree
-                        def update_node_children(node, path, index, new_child):
-                            if index >= len(path):
-                                # We've reached the target node, APPEND new children instead of replacing
-                                if "children" not in node:
-                                    node["children"] = []
-                                
-                                # If this is a linear story node, preserve the existing child
-                                existing_children = node.get("children", [])
-                                
-                                # Append the new branch
-                                node["children"] = existing_children + [new_child]
-                                return True
-                            
-                            if "children" not in node or index >= len(path) or path[index] >= len(node["children"]):
-                                return False
-                            
-                            # Continue traversing
-                            return update_node_children(node["children"][path[index]], path, index + 1, new_child)
+                        # Use the global update_node_children function
