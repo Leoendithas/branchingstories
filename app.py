@@ -6,7 +6,7 @@ from streamlit.components.v1 import html
 # Initialize the OpenAI client correctly
 client = OpenAI(api_key=st.secrets["api_keys"]["openai"])
 
-def get_story_json(prompt, is_initial_story=True):
+def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending=False):
     system_message = ""
     if is_initial_story:
         # For the initial story, create a simple linear narrative
@@ -35,28 +35,45 @@ def get_story_json(prompt, is_initial_story=True):
         Create EXACTLY 5 nodes in a linear chain (each one having only ONE child, except the last node).
         Do not include any branching choices at this stage."""
     else:
-        # For extending a branch, create multiple choices
-        system_message = """You are a branching story generator. 
+        # For extending a branch with specific length and merging options
+        system_message = f"""You are a branching story generator. 
         Respond with valid JSON that represents new branches for an existing story.
         
         The JSON should have an array of story options, each with a 'name' field for the node title,
-        a 'description' field with a detailed paragraph, and an empty 'children' array.
+        a 'description' field with a detailed paragraph, and a 'children' array that will contain the next nodes.
         
         Format:
         [
-          {
+          {{
             "name": "Option 1 Title",
             "description": "Detailed description of what happens in this branch.",
-            "children": []
-          },
-          {
+            "children": [
+              {{
+                "name": "Next node in Option 1",
+                "description": "What happens next in this branch...",
+                "children": []
+              }}
+            ]
+          }},
+          {{
             "name": "Option 2 Title",
             "description": "Detailed description of what happens in this branch.",
-            "children": []
-          }
+            "children": [
+              {{
+                "name": "Next node in Option 2",
+                "description": "What happens next in this branch...",
+                "children": []
+              }}
+            ]
+          }}
         ]
         
-        Create 2-3 interesting and distinct branching options."""
+        Create 2-3 interesting and distinct branching options.
+        
+        For each option, create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
+        {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
+        {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
+        """
     
     try:
         response = client.chat.completions.create(
@@ -65,7 +82,7 @@ def get_story_json(prompt, is_initial_story=True):
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=800,
+            max_tokens=1000,
             temperature=0.7  # Slightly higher temperature for more creative responses
         )
         story_content = response.choices[0].message.content
@@ -117,16 +134,32 @@ def get_story_json(prompt, is_initial_story=True):
                 ]
             }
         else:
+            # Default branching structure
+            branch_nodes = []
+            for i in range(branch_length - 1):
+                if i == branch_length - 2:  # Last node in the branch
+                    branch_nodes.append({
+                        "name": f"Final Node in Branch",
+                        "description": "The conclusion of this branch of the story.",
+                        "children": []
+                    })
+                else:
+                    branch_nodes.append({
+                        "name": f"Node {i+2} in Branch",
+                        "description": f"Continuing the story in this branch...",
+                        "children": [branch_nodes[-1]] if branch_nodes else []
+                    })
+            
             return [
                 {
                     "name": "Option A",
                     "description": "This is the first possible branch of the story.",
-                    "children": []
+                    "children": [branch_nodes[0]] if branch_nodes else []
                 },
                 {
                     "name": "Option B",
                     "description": "This is the second possible branch of the story.",
-                    "children": []
+                    "children": [branch_nodes[0]] if branch_nodes else []
                 }
             ]
 
@@ -462,38 +495,98 @@ if st.session_state.story_data:
         st.session_state.node_paths = {}  # Reset paths
         node_options.extend(extract_node_paths(st.session_state.story_data))
     
-    selected_node = st.selectbox("Select a node to extend:", node_options)
+    # Create two columns for branch source and destination
+    branch_col1, branch_col2 = st.columns(2)
     
-    # Only show extension options if a real node is selected
-    if selected_node != "Select a node to extend...":
-        # Get context for the selected node to help the AI generate relevant branches
-        selected_node_context = ""
-        if selected_node in st.session_state.node_paths:
-            path = st.session_state.node_paths[selected_node]
-            node = get_node_by_path(st.session_state.story_data, path)
-            if node:
-                selected_node_context = f"Selected node: {node.get('name')}\nDescription: {node.get('description')}"
+    with branch_col1:
+        source_node = st.selectbox("Branch from node:", node_options, key="source_node")
+    
+    with branch_col2:
+        # Add an option for alternative ending (no merging)
+        merge_options = ["Alternative Ending (No Merge)"] + node_options
+        dest_node = st.selectbox("Merge to node (or choose alternative ending):", 
+                                merge_options, key="dest_node")
+    
+    # Branch length slider
+    branch_length = st.slider("Number of nodes in branch path:", min_value=2, max_value=10, value=3)
+    
+    # Only show extension options if a real source node is selected
+    if source_node != "Select a node to extend...":
+        # Get context for the selected source node to help the AI generate relevant branches
+        source_node_context = ""
+        dest_node_context = ""
+        
+        if source_node in st.session_state.node_paths:
+            source_path = st.session_state.node_paths[source_node]
+            source_node_obj = get_node_by_path(st.session_state.story_data, source_path)
+            if source_node_obj:
+                source_node_context = f"Source node: {source_node_obj.get('name')}\nDescription: {source_node_obj.get('description')}"
+        
+        if dest_node != "Alternative Ending (No Merge)" and dest_node != "Select a node to extend...":
+            if dest_node in st.session_state.node_paths:
+                dest_path = st.session_state.node_paths[dest_node]
+                dest_node_obj = get_node_by_path(st.session_state.story_data, dest_path)
+                if dest_node_obj:
+                    dest_node_context = f"Destination node: {dest_node_obj.get('name')}\nDescription: {dest_node_obj.get('description')}"
+        
+        is_alt_ending = dest_node == "Alternative Ending (No Merge)"
         
         extension_prompt = st.text_area(
             "How would you like to extend this branch?", 
-            f"Create two additional branches from '{selected_node.split('→ ')[-1]}'"
+            f"Create branches from '{source_node.split('→ ')[-1]}'" + 
+            (f" that eventually lead to '{dest_node.split('→ ')[-1]}'" if not is_alt_ending and dest_node != "Select a node to extend..." else 
+             " with alternative endings")
         )
         
-        if st.button("Extend Branch"):
+        if st.button("Create Branch"):
             with st.spinner('Generating branch options...'):
                 # Create the full context for the API call
                 full_prompt = f"""
-                {selected_node_context}
+                {source_node_context}
+                
+                {dest_node_context if dest_node_context else ""}
                 
                 {extension_prompt}
+                
+                {"Create an alternative ending that provides closure to the story." if is_alt_ending else 
+                 f"Create a branch that naturally leads to the destination node after {branch_length} steps." if dest_node != "Select a node to extend..." else ""}
                 """
                 
                 # Get branch options from the API
-                branch_options = get_story_json(full_prompt, is_initial_story=False)
+                branch_options = get_story_json(full_prompt, 
+                                               is_initial_story=False, 
+                                               branch_length=branch_length,
+                                               is_alt_ending=is_alt_ending)
                 
-                # Find the node to extend
-                if selected_node in st.session_state.node_paths:
-                    path = st.session_state.node_paths[selected_node]
+                # Find the source node to extend
+                if source_node in st.session_state.node_paths:
+                    source_path = st.session_state.node_paths[source_node]
+                    
+                    # For merging, we need to eventually connect to the destination node
+                    if not is_alt_ending and dest_node != "Select a node to extend...":
+                        if dest_node in st.session_state.node_paths:
+                            dest_path = st.session_state.node_paths[dest_node]
+                            dest_node_obj = get_node_by_path(st.session_state.story_data, dest_path)
+                            
+                            # Create a deeper copy for branch options to avoid reference issues
+                            import copy
+                            branch_options_copy = copy.deepcopy(branch_options)
+                            
+                            # For each branch option, find the last node in the chain
+                            for branch in branch_options_copy:
+                                # Navigate to the last node in the branch
+                                current_node = branch
+                                while current_node.get("children", []):
+                                    if not current_node["children"]:
+                                        break
+                                    current_node = current_node["children"][0]
+                                
+                                # Connect the last node to the destination node
+                                if dest_node_obj:
+                                    # The last node should link to the destination
+                                    current_node["children"] = [dest_node_obj]
+                            
+                            branch_options = branch_options_copy
                     
                     # Helper function to update the story tree
                     def update_node_children(node, path, index, new_children):
@@ -502,11 +595,8 @@ if st.session_state.story_data:
                             if "children" not in node:
                                 node["children"] = []
                             
-                            # If this is a linear story node, preserve the existing child
-                            existing_children = node.get("children", [])
-                            
                             # Append the new branches
-                            node["children"] = existing_children + new_children
+                            node["children"] = node.get("children", []) + new_children
                             return True
                         
                         if "children" not in node or index >= len(path) or path[index] >= len(node["children"]):
@@ -516,18 +606,24 @@ if st.session_state.story_data:
                         return update_node_children(node["children"][path[index]], path, index + 1, new_children)
                     
                     # Update the story tree
-                    success = update_node_children(st.session_state.story_data, path, 0, branch_options)
+                    success = update_node_children(st.session_state.story_data, source_path, 0, branch_options)
                     
                     if success:
                         # Get the node that was updated
-                        updated_node = get_node_by_path(st.session_state.story_data, path)
+                        updated_node = get_node_by_path(st.session_state.story_data, source_path)
                         branch_count = len(updated_node.get("children", []))
                         original_count = branch_count - len(branch_options)
                         
+                        merge_message = ""
+                        if not is_alt_ending and dest_node != "Select a node to extend...":
+                            merge_message = f" They will merge back to '{dest_node.split('→ ')[-1]}' after {branch_length} steps."
+                        elif is_alt_ending:
+                            merge_message = f" They will create alternative endings after {branch_length} steps."
+                        
                         if original_count > 0:
-                            message = f"Successfully added {len(branch_options)} new branches to the story while preserving the original {original_count} path(s)!"
+                            message = f"Successfully added {len(branch_options)} new branches to the story while preserving the original {original_count} path(s)!{merge_message}"
                         else:
-                            message = f"Successfully added {len(branch_options)} new branches to the story!"
+                            message = f"Successfully added {len(branch_options)} new branches to the story!{merge_message}"
                         
                         st.success(message)
                         # Force a rerun to update the visualization
