@@ -75,35 +75,53 @@ def get_story_json(prompt, is_initial_story=True, is_merge_branch=False, merge_t
         Create 2-3 interesting and distinct branching options."""
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=800,
-            temperature=0.7  # Slightly higher temperature for more creative responses
-        )
-        story_content = response.choices[0].message.content
-        
-        # Try to clean the response if it's not pure JSON
-        if "```json" in story_content or "```" in story_content:
-            # Try to extract JSON from the response (if wrapped in ```json or similar)
-            import re
-            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', story_content)
-            if json_match:
-                story_content = json_match.group(1)
-        
-        # Try to parse the JSON
-        return json.loads(story_content)
+        # Create verbose debugging for JSON parsing
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=800,
+                temperature=0.7  # Slightly higher temperature for more creative responses
+            )
+            story_content = response.choices[0].message.content
+            
+            # Debug the raw response
+            print("Raw LLM response:", story_content)
+            
+            # Try to clean the response if it's not pure JSON
+            if "```json" in story_content or "```" in story_content:
+                # Try to extract JSON from the response (if wrapped in ```json or similar)
+                import re
+                json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', story_content)
+                if json_match:
+                    story_content = json_match.group(1)
+                    print("Extracted JSON from code block:", story_content)
+            
+            # Try to parse the JSON
+            parsed_json = json.loads(story_content)
+            print("Successfully parsed JSON")
+            return parsed_json
+            
+        except json.JSONDecodeError as json_error:
+            print(f"JSON parsing error: {json_error}")
+            print(f"Content that failed to parse: {story_content}")
+            raise
+        except Exception as api_error:
+            print(f"API or processing error: {api_error}")
+            raise
     
     except (json.JSONDecodeError, Exception) as e:
         st.error(f"Failed to parse JSON response: {e}")
-        st.write("Raw response:", story_content)
+        if isinstance(e, json.JSONDecodeError):
+            st.write("Raw response that failed to parse:")
+            st.code(story_content, language="json")
         
         # Provide a fallback structure
         if is_initial_story:
-            return {
+            fallback = {
                 "name": "Student's Day",
                 "description": "A day in the life of a student following a linear narrative.",
                 "children": [
@@ -132,16 +150,20 @@ def get_story_json(prompt, is_initial_story=True, is_merge_branch=False, merge_t
                     }
                 ]
             }
-        elif is_merge_branch:
-            return {
+            st.info("Used fallback story structure.")
+            return fallback
+                            elif is_merge_branch:
+            fallback = {
                 "name": "Return to Main Story",
                 "description": "This branch converges back to the main storyline.",
                 "is_merge_point": True,
-                "merge_target_id": "node_3", # Default to third node of main story
+                "merge_target_id": merge_target_id or "node_3", # Use provided target or default
                 "children": []
             }
+            st.info("Used fallback merge branch structure.")
+            return fallback
         else:
-            return [
+            fallback = [
                 {
                     "name": "Option A",
                     "description": "This is the first possible branch of the story.",
@@ -153,6 +175,8 @@ def get_story_json(prompt, is_initial_story=True, is_merge_branch=False, merge_t
                     "children": []
                 }
             ]
+            st.info("Used fallback branch options.")
+            return fallback
 
 # Helper function to assign unique IDs to all nodes
 def assign_node_ids(node, prefix="node", index=0):
@@ -271,11 +295,53 @@ if 'story_data' not in st.session_state:
 # Handle story generation
 if generate_button:
     with st.spinner('Generating story...'):
-        story_data = get_story_json(prompt, is_initial_story=True)
-        # Assign unique IDs to all nodes
-        st.session_state.story_data = assign_node_ids(story_data)
-        # Process merge branches
-        st.session_state.story_data, _, _ = process_merge_branch(st.session_state.story_data)
+        try:
+            story_data = get_story_json(prompt, is_initial_story=True)
+            # Assign unique IDs to all nodes
+            st.session_state.story_data = assign_node_ids(story_data)
+            # Process merge branches
+            st.session_state.story_data, _, _ = process_merge_branch(st.session_state.story_data)
+            st.success("Story generated successfully!")
+        except Exception as e:
+            st.error(f"Error generating story: {str(e)}")
+            st.write("Trying fallback story generation...")
+            try:
+                # Use the fallback story structure
+                st.session_state.story_data = {
+                    "name": "Student's Day",
+                    "description": "A day in the life of a student following a linear narrative.",
+                    "children": [
+                        {
+                            "name": "Morning Begins",
+                            "description": "The student starts their day with their morning routine.",
+                            "children": [
+                                {
+                                    "name": "Heading to School",
+                                    "description": "After getting ready, the student heads to school.",
+                                    "children": [
+                                        {
+                                            "name": "First Class",
+                                            "description": "The student attends their first class of the day.",
+                                            "children": [
+                                                {
+                                                    "name": "End of Day",
+                                                    "description": "The student completes their day and heads home.",
+                                                    "children": []
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+                # Assign unique IDs to all nodes
+                st.session_state.story_data = assign_node_ids(st.session_state.story_data)
+                st.success("Used fallback story structure.")
+            except Exception as fallback_error:
+                st.error(f"Fallback also failed: {str(fallback_error)}")
+                st.session_state.story_data = None
 
 # Render visualization if we have data
 if st.session_state.story_data:
