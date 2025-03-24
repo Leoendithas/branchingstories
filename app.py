@@ -760,8 +760,7 @@ if st.session_state.story_data:
     </html>
     '''
     
-    '''
-    
+'''    
     # Display visualization immediately after the Generate button
     st.markdown("---")  # Divider
     html(visualization_html, height=650, scrolling=True)
