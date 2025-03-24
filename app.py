@@ -246,6 +246,17 @@ if st.session_state.story_data:
                 stroke: #d26013;
                 stroke-width: 2px;
             }
+            .merge-node circle {
+                fill: #9370DB;
+                stroke: #4B0082;
+                stroke-width: 2px;
+            }
+            .merge-link {
+                fill: none;
+                stroke: #9370DB;
+                stroke-width: 2px;
+                stroke-dasharray: 5,5;
+            }
             h3 {
                 margin-top: 5px;
                 color: #333;
@@ -297,7 +308,7 @@ if st.session_state.story_data:
             
             // Add arrowhead definitions to SVG
             svg.append("defs").selectAll("marker")
-                .data(["arrow"])
+                .data(["arrow", "merge-arrow"])
                 .enter().append("marker")
                 .attr("id", function(d) { return d; })
                 .attr("viewBox", "0 -5 10 10")
@@ -308,7 +319,7 @@ if st.session_state.story_data:
                 .attr("orient", "auto")
                 .append("path")
                 .attr("d", "M0,-5L10,0L0,5")
-                .attr("fill", "#999");
+                .attr("fill", function(d) { return d === "merge-arrow" ? "#9370DB" : "#999"; });
                 
             // Create tree layout - vertical orientation (top to bottom)
             const root = d3.hierarchy(processedData);
@@ -326,8 +337,19 @@ if st.session_state.story_data:
             // Apply the layout
             treeLayout(root);
             
-            // Post-process node positions for branches - INTEGRATION OF MISSING CODE
+            // Store merge nodes and their targets for later processing
+            const mergeNodes = [];
+            
+            // Post-process node positions for branches
             root.descendants().forEach(function(d) {
+                // Collect merge nodes
+                if (d.data.merge_target) {
+                    mergeNodes.push({
+                        node: d,
+                        targetPath: d.data.merge_target
+                    });
+                }
+                
                 // For nodes with multiple children (branching points)
                 if (d.children && d.children.length > 1) {
                     // Calculate the width needed for the branches
@@ -372,7 +394,12 @@ if st.session_state.story_data:
                 .data(root.descendants())
                 .enter()
                 .append("g")
-                .attr("class", function(d) { return "node" + (d.children ? " node--internal" : " node--leaf"); })
+                .attr("class", function(d) { 
+                    let classNames = "node";
+                    classNames += d.children ? " node--internal" : " node--leaf";
+                    if (d.data.merge_target) classNames += " merge-node";
+                    return classNames;
+                })
                 .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
                 .on("click", function(event, d) {
                     // Remove previous selection
@@ -409,11 +436,46 @@ if st.session_state.story_data:
                         .attr("y", bbox.y - padding)
                         .attr("width", bbox.width + (padding * 2))
                         .attr("height", bbox.height + (padding * 2))
-                        .attr("fill", "white")
+                        .attr("fill", d.data.merge_target ? "#F0E6FF" : "white")
                         .attr("fill-opacity", 0.8)
                         .attr("rx", 3)
                         .attr("ry", 3);
                 });
+            
+            // Function to find a node by path
+            function findNodeByPath(root, path) {
+                let current = root;
+                for (let i = 0; i < path.length; i++) {
+                    if (!current.children || path[i] >= current.children.length) {
+                        return null;
+                    }
+                    current = current.children[path[i]];
+                }
+                return current;
+            }
+            
+            // Add visual merge connections
+            if (mergeNodes.length > 0) {
+                // For each merge node, find its target and create a visual connection
+                mergeNodes.forEach(function(mergeInfo) {
+                    const sourceNode = mergeInfo.node;
+                    const targetNode = findNodeByPath(root, mergeInfo.targetPath);
+                    
+                    if (targetNode) {
+                        // Add a dashed line connecting to the merge target
+                        svg.append("path")
+                            .attr("class", "merge-link")
+                            .attr("d", function() {
+                                // Create a curved line from merge node to target
+                                return "M" + sourceNode.x + "," + sourceNode.y +
+                                       "C" + sourceNode.x + "," + (sourceNode.y + 100) +
+                                       " " + targetNode.x + "," + (targetNode.y - 100) +
+                                       " " + targetNode.x + "," + targetNode.y;
+                            })
+                            .attr("marker-end", "url(#merge-arrow)");
+                    }
+                });
+            }
             
             // Function to show node details
             function showNodeDetails(nodeData) {
@@ -423,7 +485,9 @@ if st.session_state.story_data:
                 let content = "<h4>" + (nodeData.name || 'Unnamed Node') + "</h4>" +
                               "<p>" + (nodeData.description || 'No description available.') + "</p>";
                 
-                if (nodeData.children && nodeData.children.length > 0) {
+                if (nodeData.merge_target) {
+                    content += "<p><em>This node merges back to the main storyline.</em></p>";
+                } else if (nodeData.children && nodeData.children.length > 0) {
                     content += "<p><strong>Options:</strong></p><ul>";
                     nodeData.children.forEach(function(child) {
                         content += "<li>" + child.name + "</li>";
@@ -576,15 +640,28 @@ if st.session_state.story_data:
                             for branch in branch_options_copy:
                                 # Navigate to the last node in the branch
                                 current_node = branch
-                                while current_node.get("children", []):
+                                previous_node = None
+                                depth = 0
+                                
+                                # Navigate to the last node but stop before we reach the maximum depth
+                                while current_node.get("children", []) and depth < branch_length - 2:
                                     if not current_node["children"]:
                                         break
+                                    previous_node = current_node
                                     current_node = current_node["children"][0]
+                                    depth += 1
                                 
-                                # Connect the last node to the destination node
+                                # Instead of directly connecting to the destination node object,
+                                # create a special node that references the destination but avoids circular references
                                 if dest_node_obj:
-                                    # The last node should link to the destination
-                                    current_node["children"] = [dest_node_obj]
+                                    # Create a pointer node instead of directly using the dest_node_obj
+                                    merge_node = {
+                                        "name": f"Merge back to: {dest_node_obj.get('name', 'Destination')}",
+                                        "description": f"This path merges back to the main storyline at '{dest_node_obj.get('name', 'Destination')}'.",
+                                        "children": [],
+                                        "merge_target": dest_path  # Store just the path to the target, not the object itself
+                                    }
+                                    current_node["children"] = [merge_node]
                             
                             branch_options = branch_options_copy
                     
