@@ -6,7 +6,7 @@ from streamlit.components.v1 import html
 # Initialize the OpenAI client correctly
 client = OpenAI(api_key=st.secrets["api_keys"]["openai"])
 
-def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending=False):
+def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending=False, single_branch=False):
     system_message = ""
     if is_initial_story:
         # For the initial story, create a simple linear narrative
@@ -36,44 +36,69 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
         Do not include any branching choices at this stage."""
     else:
         # For extending a branch with specific length and merging options
-        system_message = f"""You are a branching story generator. 
-        Respond with valid JSON that represents new branches for an existing story.
-        
-        The JSON should have an array of story options, each with a 'name' field for the node title,
-        a 'description' field with a detailed paragraph, and a 'children' array that will contain the next nodes.
-        
-        Format:
-        [
-          {{
-            "name": "Option 1 Title",
-            "description": "Detailed description of what happens in this branch.",
-            "children": [
+        if single_branch:
+            system_message = f"""You are a branching story generator. 
+            Respond with valid JSON that represents a SINGLE new branch for an existing story.
+            
+            The JSON should have a 'name' field for the node title, a 'description' field with 
+            a detailed paragraph, and a 'children' array that will contain the next nodes.
+            
+            Format:
+            {{
+              "name": "New Branch Title",
+              "description": "Detailed description of what happens in this branch.",
+              "children": [
+                {{
+                  "name": "Next node in the branch",
+                  "description": "What happens next in this branch...",
+                  "children": []
+                }}
+              ]
+            }}
+            
+            Create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
+            {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
+            {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
+            """
+        else:
+            system_message = f"""You are a branching story generator. 
+            Respond with valid JSON that represents new branches for an existing story.
+            
+            The JSON should have an array of story options, each with a 'name' field for the node title,
+            a 'description' field with a detailed paragraph, and a 'children' array that will contain the next nodes.
+            
+            Format:
+            [
               {{
-                "name": "Next node in Option 1",
-                "description": "What happens next in this branch...",
-                "children": []
+                "name": "Option 1 Title",
+                "description": "Detailed description of what happens in this branch.",
+                "children": [
+                  {{
+                    "name": "Next node in Option 1",
+                    "description": "What happens next in this branch...",
+                    "children": []
+                  }}
+                ]
+              }},
+              {{
+                "name": "Option 2 Title",
+                "description": "Detailed description of what happens in this branch.",
+                "children": [
+                  {{
+                    "name": "Next node in Option 2",
+                    "description": "What happens next in this branch...",
+                    "children": []
+                  }}
+                ]
               }}
             ]
-          }},
-          {{
-            "name": "Option 2 Title",
-            "description": "Detailed description of what happens in this branch.",
-            "children": [
-              {{
-                "name": "Next node in Option 2",
-                "description": "What happens next in this branch...",
-                "children": []
-              }}
-            ]
-          }}
-        ]
-        
-        Create 2-3 interesting and distinct branching options.
-        
-        For each option, create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
-        {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
-        {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
-        """
+            
+            Create 2-3 interesting and distinct branching options.
+            
+            For each option, create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
+            {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
+            {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
+            """
     
     try:
         response = client.chat.completions.create(
@@ -574,6 +599,15 @@ if st.session_state.story_data:
     # Branch length slider
     branch_length = st.slider("Number of nodes in branch path:", min_value=2, max_value=10, value=3)
     
+    # Add a radio button for single branch vs multiple branches
+    branch_type = st.radio(
+        "Branch creation mode:",
+        ["Create single branch", "Create multiple branches (2-3 options)"],
+        index=0
+    )
+    
+    single_branch_mode = branch_type == "Create single branch"
+    
     # Only show extension options if a real source node is selected
     if source_node != "Select a node to extend...":
         # Get context for the selected source node to help the AI generate relevant branches
@@ -595,15 +629,24 @@ if st.session_state.story_data:
         
         is_alt_ending = dest_node == "Alternative Ending (No Merge)"
         
+        if single_branch_mode:
+            branch_label = "branch"
+            extension_prompt_default = f"Create a branch from '{source_node.split('→ ')[-1]}'" + \
+                (f" that eventually leads to '{dest_node.split('→ ')[-1]}'" if not is_alt_ending and dest_node != "Select a node to extend..." else 
+                " with an alternative ending")
+        else:
+            branch_label = "branches"
+            extension_prompt_default = f"Create branches from '{source_node.split('→ ')[-1]}'" + \
+                (f" that eventually lead to '{dest_node.split('→ ')[-1]}'" if not is_alt_ending and dest_node != "Select a node to extend..." else 
+                " with alternative endings")
+        
         extension_prompt = st.text_area(
-            "How would you like to extend this branch?", 
-            f"Create branches from '{source_node.split('→ ')[-1]}'" + 
-            (f" that eventually lead to '{dest_node.split('→ ')[-1]}'" if not is_alt_ending and dest_node != "Select a node to extend..." else 
-             " with alternative endings")
+            f"How would you like to extend this {branch_label}?", 
+            extension_prompt_default
         )
         
-        if st.button("Create Branch"):
-            with st.spinner('Generating branch options...'):
+        if st.button(f"Create {branch_label.capitalize()}"):
+            with st.spinner(f'Generating {branch_label}...'):
                 # Create the full context for the API call
                 full_prompt = f"""
                 {source_node_context}
@@ -620,8 +663,12 @@ if st.session_state.story_data:
                 branch_options = get_story_json(full_prompt, 
                                                is_initial_story=False, 
                                                branch_length=branch_length,
-                                               is_alt_ending=is_alt_ending)
+                                               is_alt_ending=is_alt_ending,
+                                               single_branch=single_branch_mode)
                 
+                # If single branch mode was used, we need to wrap the result in an array
+                if single_branch_mode and not isinstance(branch_options, list):
+                    branch_options = [branch_options]
                 # Find the source node to extend
                 if source_node in st.session_state.node_paths:
                     source_path = st.session_state.node_paths[source_node]
