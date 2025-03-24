@@ -575,7 +575,189 @@ if st.session_state.story_data:
 </body>
 </html>
 '''
-
+            
+            // Apply the layout
+            treeLayout(root);
+            
+            // Store merge nodes and their targets for later processing
+            const mergeNodes = [];
+            
+            // Post-process node positions for branches
+            root.descendants().forEach(function(d) {
+                // Collect merge nodes
+                if (d.data.merge_target) {
+                    mergeNodes.push({
+                        node: d,
+                        targetPath: d.data.merge_target
+                    });
+                }
+                
+                // For nodes with multiple children (branching points)
+                if (d.children && d.children.length > 1) {
+                    // Calculate the width needed for the branches
+                    const branchWidth = d.children.length * 80;
+                    
+                    // Adjust positions of child nodes
+                    d.children.forEach(function(child, i) {
+                        const offset = branchWidth * (i / (d.children.length - 1) - 0.5);
+                        child.x = d.x + offset;
+                        
+                        // Recursively adjust positions of all descendants
+                        function adjustDescendants(node) {
+                            if (node.children) {
+                                node.children.forEach(function(c) {
+                                    c.x += offset;
+                                    adjustDescendants(c);
+                                });
+                            }
+                        }
+                        adjustDescendants(child);
+                    });
+                }
+            });
+            
+            // Add links - using curved lines for better visualization
+            const link = svg.selectAll(".link")
+                .data(root.links())
+                .enter()
+                .append("path")
+                .attr("class", "link")
+                .attr("d", function(d) {
+                    // Create a gentle curve for the links
+                    return "M" + d.source.x + "," + d.source.y +
+                           "C" + d.source.x + "," + (d.source.y + 50) +
+                           " " + d.target.x + "," + (d.target.y - 50) +
+                           " " + d.target.x + "," + d.target.y;
+                })
+                .attr("marker-end", "url(#arrow)");
+            
+            // Create node groups
+            const node = svg.selectAll(".node")
+                .data(root.descendants())
+                .enter()
+                .append("g")
+                .attr("class", function(d) { 
+                    let classNames = "node";
+                    classNames += d.children ? " node--internal" : " node--leaf";
+                    if (d.data.merge_target) classNames += " merge-node";
+                    if (d.data.achievement) classNames += " achievement-node";
+                    return classNames;
+                })
+                .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
+                .on("click", function(event, d) {
+                    // Remove previous selection
+                    d3.selectAll(".selected-node").classed("selected-node", false);
+                    
+                    // Add selection to clicked node
+                    d3.select(this).classed("selected-node", true);
+                    
+                    // Update detail panel
+                    showNodeDetails(d.data);
+                });
+            
+            // Add circles to nodes
+            node.append("circle")
+                .attr("r", 5);
+            
+            // Add text labels with background rectangles for better readability
+            node.append("text")
+                .attr("dy", -20) // Move text higher above the node
+                .attr("x", 0)
+                .attr("text-anchor", "middle")
+                .text(function(d) { 
+                    // Truncate long node names to prevent overlap
+                    const name = d.data.name;
+                    return name.length > 20 ? name.substring(0, 18) + "..." : name;
+                })
+                .each(function(d) {
+                    // Add background rectangle for text
+                    const bbox = this.getBBox();
+                    const padding = 3;
+                    
+                    d3.select(this.parentNode).insert("rect", "text")
+                        .attr("x", bbox.x - padding)
+                        .attr("y", bbox.y - padding)
+                        .attr("width", bbox.width + (padding * 2))
+                        .attr("height", bbox.height + (padding * 2))
+                        .attr("fill", d.data.achievement ? "#FFF8DC" : d.data.merge_target ? "#F0E6FF" : "white")
+                        .attr("fill-opacity", 0.8)
+                        .attr("rx", 3)
+                        .attr("ry", 3);
+                });
+            
+            // Function to find a node by path
+            function findNodeByPath(root, path) {
+                let current = root;
+                for (let i = 0; i < path.length; i++) {
+                    if (!current.children || path[i] >= current.children.length) {
+                        return null;
+                    }
+                    current = current.children[path[i]];
+                }
+                return current;
+            }
+            
+            // Add visual merge connections
+            if (mergeNodes.length > 0) {
+                // For each merge node, find its target and create a visual connection
+                mergeNodes.forEach(function(mergeInfo) {
+                    const sourceNode = mergeInfo.node;
+                    const targetNode = findNodeByPath(root, mergeInfo.targetPath);
+                    
+                    if (targetNode) {
+                        // Add a dashed line connecting to the merge target
+                        svg.append("path")
+                            .attr("class", "merge-link")
+                            .attr("d", function() {
+                                // Create a curved line from merge node to target
+                                return "M" + sourceNode.x + "," + sourceNode.y +
+                                       "C" + sourceNode.x + "," + (sourceNode.y + 100) +
+                                       " " + targetNode.x + "," + (targetNode.y - 100) +
+                                       " " + targetNode.x + "," + targetNode.y;
+                            })
+                            .attr("marker-end", "url(#merge-arrow)");
+                    }
+                });
+            }
+            
+            // Function to show node details
+            function showNodeDetails(nodeData) {
+                const detailsDiv = document.getElementById('node-details');
+                
+                // Create HTML content
+                let content = "<h4>" + (nodeData.name || 'Unnamed Node') + "</h4>" +
+                              "<p>" + (nodeData.description || 'No description available.') + "</p>";
+                
+                // Show achievement if it exists
+                if (nodeData.achievement) {
+                    content += '<div class="achievement-badge">' +
+                               '<h4>🏆 ' + nodeData.achievement.title + '</h4>' +
+                               '<p>' + nodeData.achievement.description + '</p>' +
+                               '</div>';
+                }
+                
+                if (nodeData.merge_target) {
+                    content += "<p><em>This node merges back to the main storyline.</em></p>";
+                } else if (nodeData.children && nodeData.children.length > 0) {
+                    content += "<p><strong>Options:</strong></p><ul>";
+                    nodeData.children.forEach(function(child) {
+                        content += "<li>" + child.name + "</li>";
+                    });
+                    content += "</ul>";
+                } else {
+                    content += "<p><em>This is an endpoint of the story.</em></p>";
+                }
+                
+                detailsDiv.innerHTML = content;
+            }
+            
+            // Select the root node initially
+            node.filter(function(d) { return !d.parent; })
+                .classed("selected-node", true)
+                .each(function(d) { showNodeDetails(d.data); });
+        </script>
+    </body>
+    </html>
     '''
             
             // Apply the layout
