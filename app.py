@@ -6,7 +6,7 @@ from streamlit.components.v1 import html
 # Initialize the OpenAI client correctly
 client = OpenAI(api_key=st.secrets["api_keys"]["openai"])
 
-def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending=False, single_branch=False, include_achievements=True):
+def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending=False, single_branch=False):
     system_message = ""
     if is_initial_story:
         # For the initial story, create a simple linear narrative
@@ -36,18 +36,6 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
         Do not include any branching choices at this stage."""
     else:
         # For extending a branch with specific length and merging options
-        achievement_instructions = """
-        For the FINAL node in each branch, include an 'achievement' object with this structure:
-        "achievement": {
-          "type": "Achievement",
-          "title": "A Creative Achievement Title",
-          "description": "Congratulatory message explaining what the student accomplished in this branch."
-        }
-        
-        The achievement title should be catchy and relevant to what happened in this branch.
-        The description should be congratulatory and explain what skills or values the student demonstrated.
-        """ if include_achievements else ""
-        
         if single_branch:
             system_message = f"""You are a branching story generator. 
             Respond with valid JSON that represents a SINGLE new branch for an existing story.
@@ -71,8 +59,6 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
             Create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
             {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
             {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
-            
-            {achievement_instructions}
             """
         else:
             system_message = f"""You are a branching story generator. 
@@ -88,7 +74,7 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
                 "description": "Detailed description of what happens in this branch.",
                 "children": [
                   {{
-                    "name": "Next node in Option l",
+                    "name": "Next node in Option 1",
                     "description": "What happens next in this branch...",
                     "children": []
                   }}
@@ -112,8 +98,6 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
             For each option, create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
             {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
             {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
-            
-            {achievement_instructions}
             """
     
     try:
@@ -237,529 +221,144 @@ if st.session_state.story_data:
     
     # Create D3.js visualization HTML - using string concatenation instead of f-strings for JavaScript
     visualization_html = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        #story-container {
-            display: flex;
-            width: 100%;
-            height: 600px;
-        }
-        #tree-container {
-            flex: 2;
-            height: 550px;
-            overflow: auto;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 20px;
-            margin-bottom: 10px;
-        }
-        #detail-panel {
-            flex: 1;
-            padding: 15px;
-            background-color: #f5f7f9;
-            border-left: 1px solid #ddd;
-            margin-left: 10px;
-            border-radius: 5px;
-            overflow: auto;
-        }
-        .node circle {
-            fill: #69b3a2;
-            stroke: #3a7759;
-            stroke-width: 1.5px;
-        }
-        .node text {
-            font: 12px sans-serif;
-            fill: #333;
-        }
-        .node:hover circle {
-            fill: #3a7759;
-        }
-        .link {
-            fill: none;
-            stroke: #ccc;
-            stroke-width: 2px;
-        }
-        .selected-node circle {
-            fill: #ff7f0e;
-            stroke: #d26013;
-            stroke-width: 2px;
-        }
-        .merge-node circle {
-            fill: #9370DB;
-            stroke: #4B0082;
-            stroke-width: 2px;
-        }
-        .achievement-node circle {
-            fill: #FFD700;
-            stroke: #DAA520;
-            stroke-width: 2px;
-        }
-        .merge-link {
-            fill: none;
-            stroke: #9370DB;
-            stroke-width: 2px;
-            stroke-dasharray: 5,5;
-        }
-        h3 {
-            margin-top: 5px;
-            color: #333;
-        }
-        .achievement-badge {
-            background-color: #FFF8DC;
-            border: 2px solid #FFD700;
-            border-radius: 8px;
-            padding: 10px;
-            margin-top: 15px;
-        }
-        .achievement-badge h4 {
-            color: #DAA520;
-            margin-top: 0;
-            margin-bottom: 5px;
-        }
-    </style>
-</head>
-<body>
-    <div id="story-container">
-        <div id="tree-container"></div>
-        <div id="detail-panel">
-            <h3>Node Details</h3>
-            <p>Click on a node to view its details.</p>
-            <div id="node-details"></div>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            #story-container {
+                display: flex;
+                width: 100%;
+                height: 600px;
+            }
+            #tree-container {
+                flex: 2;
+                height: 550px;
+                overflow: auto;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                padding: 20px;
+                margin-bottom: 10px;
+            }
+            #detail-panel {
+                flex: 1;
+                padding: 15px;
+                background-color: #f5f7f9;
+                border-left: 1px solid #ddd;
+                margin-left: 10px;
+                border-radius: 5px;
+                overflow: auto;
+            }
+            .node circle {
+                fill: #69b3a2;
+                stroke: #3a7759;
+                stroke-width: 1.5px;
+            }
+            .node text {
+                font: 12px sans-serif;
+                fill: #333;
+            }
+            .node:hover circle {
+                fill: #3a7759;
+            }
+            .link {
+                fill: none;
+                stroke: #ccc;
+                stroke-width: 2px;
+            }
+            .selected-node circle {
+                fill: #ff7f0e;
+                stroke: #d26013;
+                stroke-width: 2px;
+            }
+            .merge-node circle {
+                fill: #9370DB;
+                stroke: #4B0082;
+                stroke-width: 2px;
+            }
+            .merge-link {
+                fill: none;
+                stroke: #9370DB;
+                stroke-width: 2px;
+                stroke-dasharray: 5,5;
+            }
+            h3 {
+                margin-top: 5px;
+                color: #333;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="story-container">
+            <div id="tree-container"></div>
+            <div id="detail-panel">
+                <h3>Node Details</h3>
+                <p>Click on a node to view its details.</p>
+                <div id="node-details"></div>
+            </div>
         </div>
-    </div>
 
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script>
-        // Data from Python
-        const data = ''' + json.dumps(st.session_state.story_data) + ''';
-        
-        // Process nodes to ensure they have proper properties
-        function processNode(node) {
-            if (!node.name) node.name = node.title || "Unnamed Node";
-            if (!node.description) node.description = node.text || "";
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <script>
+            // Data from Python
+            const data = ''' + json.dumps(st.session_state.story_data) + ''';
             
-            if (node.children && Array.isArray(node.children)) {
-                node.children.forEach(processNode);
-            }
-            return node;
-        }
-        
-        const processedData = processNode(JSON.parse(JSON.stringify(data)));
-        
-        // Set up tree visualization with vertical layout
-        const margin = {top: 50, right: 30, bottom: 50, left: 50};
-        const width = document.getElementById('tree-container').clientWidth - margin.left - margin.right;
-        const height = document.getElementById('tree-container').clientHeight - margin.top - margin.bottom;
-        
-        // Create SVG
-        const svg = d3.select("#tree-container").append("svg")
-            .attr("width", width + margin.left + margin.right)
-            .attr("height", height + margin.top + margin.bottom)
-            .append("g")
-            .attr("transform", "translate(" + (width/2) + "," + margin.top + ")")
-            .call(d3.zoom().on("zoom", function(event) {
-                svg.attr("transform", event.transform);
-            }));
-        
-        // Add arrowhead definitions to SVG
-        svg.append("defs").selectAll("marker")
-            .data(["arrow", "merge-arrow"])
-            .enter().append("marker")
-            .attr("id", function(d) { return d; })
-            .attr("viewBox", "0 -5 10 10")
-            .attr("refX", 10)
-            .attr("refY", 0)
-            .attr("markerWidth", 6)
-            .attr("markerHeight", 6)
-            .attr("orient", "auto")
-            .append("path")
-            .attr("d", "M0,-5L10,0L0,5")
-            .attr("fill", function(d) { return d === "merge-arrow" ? "#9370DB" : "#999"; });
-            
-        // Create tree layout - vertical orientation (top to bottom)
-        const root = d3.hierarchy(processedData);
-        const nodeCount = root.descendants().length;
-        
-        // Create a Y-axis spacing variable based on the number of nodes
-        const ySpacing = Math.min(120, (height * 0.8) / (nodeCount + 1));
-        
-        // Create tree layout - vertical orientation (top to bottom)
-        const treeLayout = d3.tree()
-            .size([width * 0.7, nodeCount <= 5 ? height * 0.7 : height * 0.85]) // Adaptive sizing
-            .nodeSize([0, ySpacing]) // Set consistent vertical spacing between nodes
-            .separation(function(a, b) { return 3; }); // Increase horizontal separation
-        
-        // Apply the layout
-        treeLayout(root);
-        
-        // Store merge nodes and their targets for later processing
-        const mergeNodes = [];
-        
-        // Post-process node positions for branches
-        root.descendants().forEach(function(d) {
-            // Collect merge nodes
-            if (d.data.merge_target) {
-                mergeNodes.push({
-                    node: d,
-                    targetPath: d.data.merge_target
-                });
-            }
-            
-            // For nodes with multiple children (branching points)
-            if (d.children && d.children.length > 1) {
-                // Calculate the width needed for the branches
-                const branchWidth = d.children.length * 80;
+            // Process nodes to ensure they have proper properties
+            function processNode(node) {
+                if (!node.name) node.name = node.title || "Unnamed Node";
+                if (!node.description) node.description = node.text || "";
                 
-                // Adjust positions of child nodes
-                d.children.forEach(function(child, i) {
-                    const offset = branchWidth * (i / (d.children.length - 1) - 0.5);
-                    child.x = d.x + offset;
-                    
-                    // Recursively adjust positions of all descendants
-                    function adjustDescendants(node) {
-                        if (node.children) {
-                            node.children.forEach(function(c) {
-                                c.x += offset;
-                                adjustDescendants(c);
-                            });
-                        }
-                    }
-                    adjustDescendants(child);
-                });
-            }
-        });
-        
-        // Add links - using curved lines for better visualization
-        const link = svg.selectAll(".link")
-            .data(root.links())
-            .enter()
-            .append("path")
-            .attr("class", "link")
-            .attr("d", function(d) {
-                // Create a gentle curve for the links
-                return "M" + d.source.x + "," + d.source.y +
-                       "C" + d.source.x + "," + (d.source.y + 50) +
-                       " " + d.target.x + "," + (d.target.y - 50) +
-                       " " + d.target.x + "," + d.target.y;
-            })
-            .attr("marker-end", "url(#arrow)");
-        
-        // Create node groups
-        const node = svg.selectAll(".node")
-            .data(root.descendants())
-            .enter()
-            .append("g")
-            .attr("class", function(d) { 
-                let classNames = "node";
-                classNames += d.children ? " node--internal" : " node--leaf";
-                if (d.data.merge_target) classNames += " merge-node";
-                if (d.data.achievement) classNames += " achievement-node";
-                return classNames;
-            })
-            .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
-            .on("click", function(event, d) {
-                // Remove previous selection
-                d3.selectAll(".selected-node").classed("selected-node", false);
-                
-                // Add selection to clicked node
-                d3.select(this).classed("selected-node", true);
-                
-                // Update detail panel
-                showNodeDetails(d.data);
-            });
-        
-        // Add circles to nodes
-        node.append("circle")
-            .attr("r", 5);
-        
-        // Add text labels with background rectangles for better readability
-        node.append("text")
-            .attr("dy", -20) // Move text higher above the node
-            .attr("x", 0)
-            .attr("text-anchor", "middle")
-            .text(function(d) { 
-                // Truncate long node names to prevent overlap
-                const name = d.data.name;
-                return name.length > 20 ? name.substring(0, 18) + "..." : name;
-            })
-            .each(function(d) {
-                // Add background rectangle for text
-                const bbox = this.getBBox();
-                const padding = 3;
-                
-                d3.select(this.parentNode).insert("rect", "text")
-                    .attr("x", bbox.x - padding)
-                    .attr("y", bbox.y - padding)
-                    .attr("width", bbox.width + (padding * 2))
-                    .attr("height", bbox.height + (padding * 2))
-                    .attr("fill", d.data.achievement ? "#FFF8DC" : d.data.merge_target ? "#F0E6FF" : "white")
-                    .attr("fill-opacity", 0.8)
-                    .attr("rx", 3)
-                    .attr("ry", 3);
-            });
-        
-        // Function to find a node by path
-        function findNodeByPath(root, path) {
-            let current = root;
-            for (let i = 0; i < path.length; i++) {
-                if (!current.children || path[i] >= current.children.length) {
-                    return null;
+                if (node.children && Array.isArray(node.children)) {
+                    node.children.forEach(processNode);
                 }
-                current = current.children[path[i]];
-            }
-            return current;
-        }
-        
-        // Add visual merge connections
-        if (mergeNodes.length > 0) {
-            // For each merge node, find its target and create a visual connection
-            mergeNodes.forEach(function(mergeInfo) {
-                const sourceNode = mergeInfo.node;
-                const targetNode = findNodeByPath(root, mergeInfo.targetPath);
-                
-                if (targetNode) {
-                    // Add a dashed line connecting to the merge target
-                    svg.append("path")
-                        .attr("class", "merge-link")
-                        .attr("d", function() {
-                            // Create a curved line from merge node to target
-                            return "M" + sourceNode.x + "," + sourceNode.y +
-                                   "C" + sourceNode.x + "," + (sourceNode.y + 100) +
-                                   " " + targetNode.x + "," + (targetNode.y - 100) +
-                                   " " + targetNode.x + "," + targetNode.y;
-                        })
-                        .attr("marker-end", "url(#merge-arrow)");
-                }
-            });
-        }
-        
-        // Function to show node details
-        function showNodeDetails(nodeData) {
-            const detailsDiv = document.getElementById('node-details');
-            
-            // Create HTML content
-            let content = "<h4>" + (nodeData.name || 'Unnamed Node') + "</h4>" +
-                          "<p>" + (nodeData.description || 'No description available.') + "</p>";
-            
-            // Show achievement if it exists
-            if (nodeData.achievement) {
-                content += '<div class="achievement-badge">' +
-                           '<h4>🏆 ' + nodeData.achievement.title + '</h4>' +
-                           '<p>' + nodeData.achievement.description + '</p>' +
-                           '</div>';
+                return node;
             }
             
-            if (nodeData.merge_target) {
-                content += "<p><em>This node merges back to the main storyline.</em></p>";
-            } else if (nodeData.children && nodeData.children.length > 0) {
-                content += "<p><strong>Options:</strong></p><ul>";
-                nodeData.children.forEach(function(child) {
-                    content += "<li>" + child.name + "</li>";
-                });
-                content += "</ul>";
-            } else {
-                content += "<p><em>This is an endpoint of the story.</em></p>";
-            }
+            const processedData = processNode(JSON.parse(JSON.stringify(data)));
             
-            detailsDiv.innerHTML = content;
-        }
-        
-        // Select the root node initially
-        node.filter(function(d) { return !d.parent; })
-            .classed("selected-node", true)
-            .each(function(d) { showNodeDetails(d.data); });
-    </script>
-</body>
-</html>
-'''
-'''            
-            // Apply the layout
-            treeLayout(root);
+            // Set up tree visualization with vertical layout
+            const margin = {top: 50, right: 30, bottom: 50, left: 50};
+            const width = document.getElementById('tree-container').clientWidth - margin.left - margin.right;
+            const height = document.getElementById('tree-container').clientHeight - margin.top - margin.bottom;
             
-            // Store merge nodes and their targets for later processing
-            const mergeNodes = [];
-            
-            // Post-process node positions for branches
-            root.descendants().forEach(function(d) {
-                // Collect merge nodes
-                if (d.data.merge_target) {
-                    mergeNodes.push({
-                        node: d,
-                        targetPath: d.data.merge_target
-                    });
-                }
-                
-                // For nodes with multiple children (branching points)
-                if (d.children && d.children.length > 1) {
-                    // Calculate the width needed for the branches
-                    const branchWidth = d.children.length * 80;
-                    
-                    // Adjust positions of child nodes
-                    d.children.forEach(function(child, i) {
-                        const offset = branchWidth * (i / (d.children.length - 1) - 0.5);
-                        child.x = d.x + offset;
-                        
-                        // Recursively adjust positions of all descendants
-                        function adjustDescendants(node) {
-                            if (node.children) {
-                                node.children.forEach(function(c) {
-                                    c.x += offset;
-                                    adjustDescendants(c);
-                                });
-                            }
-                        }
-                        adjustDescendants(child);
-                    });
-                }
-            });
-            
-            // Add links - using curved lines for better visualization
-            const link = svg.selectAll(".link")
-                .data(root.links())
-                .enter()
-                .append("path")
-                .attr("class", "link")
-                .attr("d", function(d) {
-                    // Create a gentle curve for the links
-                    return "M" + d.source.x + "," + d.source.y +
-                           "C" + d.source.x + "," + (d.source.y + 50) +
-                           " " + d.target.x + "," + (d.target.y - 50) +
-                           " " + d.target.x + "," + d.target.y;
-                })
-                .attr("marker-end", "url(#arrow)");
-            
-            // Create node groups
-            const node = svg.selectAll(".node")
-                .data(root.descendants())
-                .enter()
+            // Create SVG
+            const svg = d3.select("#tree-container").append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
                 .append("g")
-                .attr("class", function(d) { 
-                    let classNames = "node";
-                    classNames += d.children ? " node--internal" : " node--leaf";
-                    if (d.data.merge_target) classNames += " merge-node";
-                    if (d.data.achievement) classNames += " achievement-node";
-                    return classNames;
-                })
-                .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
-                .on("click", function(event, d) {
-                    // Remove previous selection
-                    d3.selectAll(".selected-node").classed("selected-node", false);
-                    
-                    // Add selection to clicked node
-                    d3.select(this).classed("selected-node", true);
-                    
-                    // Update detail panel
-                    showNodeDetails(d.data);
-                });
+                .attr("transform", "translate(" + (width/2) + "," + margin.top + ")")
+                .call(d3.zoom().on("zoom", function(event) {
+                    svg.attr("transform", event.transform);
+                }));
             
-            // Add circles to nodes
-            node.append("circle")
-                .attr("r", 5);
-            
-            // Add text labels with background rectangles for better readability
-            node.append("text")
-                .attr("dy", -20) // Move text higher above the node
-                .attr("x", 0)
-                .attr("text-anchor", "middle")
-                .text(function(d) { 
-                    // Truncate long node names to prevent overlap
-                    const name = d.data.name;
-                    return name.length > 20 ? name.substring(0, 18) + "..." : name;
-                })
-                .each(function(d) {
-                    // Add background rectangle for text
-                    const bbox = this.getBBox();
-                    const padding = 3;
-                    
-                    d3.select(this.parentNode).insert("rect", "text")
-                        .attr("x", bbox.x - padding)
-                        .attr("y", bbox.y - padding)
-                        .attr("width", bbox.width + (padding * 2))
-                        .attr("height", bbox.height + (padding * 2))
-                        .attr("fill", d.data.achievement ? "#FFF8DC" : d.data.merge_target ? "#F0E6FF" : "white")
-                        .attr("fill-opacity", 0.8)
-                        .attr("rx", 3)
-                        .attr("ry", 3);
-                });
-            
-            // Function to find a node by path
-            function findNodeByPath(root, path) {
-                let current = root;
-                for (let i = 0; i < path.length; i++) {
-                    if (!current.children || path[i] >= current.children.length) {
-                        return null;
-                    }
-                    current = current.children[path[i]];
-                }
-                return current;
-            }
-            
-            // Add visual merge connections
-            if (mergeNodes.length > 0) {
-                // For each merge node, find its target and create a visual connection
-                mergeNodes.forEach(function(mergeInfo) {
-                    const sourceNode = mergeInfo.node;
-                    const targetNode = findNodeByPath(root, mergeInfo.targetPath);
-                    
-                    if (targetNode) {
-                        // Add a dashed line connecting to the merge target
-                        svg.append("path")
-                            .attr("class", "merge-link")
-                            .attr("d", function() {
-                                // Create a curved line from merge node to target
-                                return "M" + sourceNode.x + "," + sourceNode.y +
-                                       "C" + sourceNode.x + "," + (sourceNode.y + 100) +
-                                       " " + targetNode.x + "," + (targetNode.y - 100) +
-                                       " " + targetNode.x + "," + targetNode.y;
-                            })
-                            .attr("marker-end", "url(#merge-arrow)");
-                    }
-                });
-            }
-            
-            // Function to show node details
-            function showNodeDetails(nodeData) {
-                const detailsDiv = document.getElementById('node-details');
+            // Add arrowhead definitions to SVG
+            svg.append("defs").selectAll("marker")
+                .data(["arrow", "merge-arrow"])
+                .enter().append("marker")
+                .attr("id", function(d) { return d; })
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 10)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-5L10,0L0,5")
+                .attr("fill", function(d) { return d === "merge-arrow" ? "#9370DB" : "#999"; });
                 
-                // Create HTML content
-                let content = "<h4>" + (nodeData.name || 'Unnamed Node') + "</h4>" +
-                              "<p>" + (nodeData.description || 'No description available.') + "</p>";
-                
-                // Show achievement if it exists
-                if (nodeData.achievement) {
-                    content += '<div class="achievement-badge">' +
-                               '<h4>🏆 ' + nodeData.achievement.title + '</h4>' +
-                               '<p>' + nodeData.achievement.description + '</p>' +
-                               '</div>';
-                }
-                
-                if (nodeData.merge_target) {
-                    content += "<p><em>This node merges back to the main storyline.</em></p>";
-                } else if (nodeData.children && nodeData.children.length > 0) {
-                    content += "<p><strong>Options:</strong></p><ul>";
-                    nodeData.children.forEach(function(child) {
-                        content += "<li>" + child.name + "</li>";
-                    });
-                    content += "</ul>";
-                } else {
-                    content += "<p><em>This is an endpoint of the story.</em></p>";
-                }
-                
-                detailsDiv.innerHTML = content;
-            }
+            // Create tree layout - vertical orientation (top to bottom)
+            const root = d3.hierarchy(processedData);
+            const nodeCount = root.descendants().length;
             
-            // Select the root node initially
-            node.filter(function(d) { return !d.parent; })
-                .classed("selected-node", true)
-                .each(function(d) { showNodeDetails(d.data); });
-        </script>
-    </body>
-    </html>
-    '''
-        '''        
+            // Create a Y-axis spacing variable based on the number of nodes
+            const ySpacing = Math.min(120, (height * 0.8) / (nodeCount + 1));
+            
+            // Create tree layout - vertical orientation (top to bottom)
+            const treeLayout = d3.tree()
+                .size([width * 0.7, nodeCount <= 5 ? height * 0.7 : height * 0.85]) // Adaptive sizing
+                .nodeSize([0, ySpacing]) // Set consistent vertical spacing between nodes
+                .separation(function(a, b) { return 3; }); // Increase horizontal separation
+            
             // Apply the layout
             treeLayout(root);
             
@@ -934,7 +533,7 @@ if st.session_state.story_data:
     </body>
     </html>
     '''
-    '''
+    
     # Display visualization immediately after the Generate button
     st.markdown("---")  # Divider
     html(visualization_html, height=650, scrolling=True)
@@ -999,10 +598,6 @@ if st.session_state.story_data:
     
     # Branch length slider
     branch_length = st.slider("Number of nodes in branch path:", min_value=2, max_value=10, value=3)
-    
-    # Add a toggle for achievements
-    achievements_enabled = st.checkbox("Enable achievements at branch endings", value=True,
-                                     help="When enabled, students will receive achievements upon completing branches")
     
     # Add a radio button for single branch vs multiple branches
     branch_type = st.radio(
@@ -1088,49 +683,32 @@ if st.session_state.story_data:
                             import copy
                             branch_options_copy = copy.deepcopy(branch_options)
                             
-                # For each branch option, find the last node in the chain
-                for branch in branch_options_copy:
-                    # Navigate to the last node in the branch
-                    current_node = branch
-                    previous_node = None
-                    depth = 0
-                    
-                    # Navigate to the last node but stop before we reach the maximum depth
-                    while current_node.get("children", []) and depth < branch_length - 2:
-                        if not current_node["children"]:
-                            break
-                        previous_node = current_node
-                        current_node = current_node["children"][0]
-                        depth += 1
-                    
-                    # Instead of directly connecting to the destination node object,
-                    # create a special node that references the destination but avoids circular references
-                    if dest_node_obj:
-                        # Before creating merge node, check if this node needs an achievement
-                        # Ensure achievement exists if this is the final node in the branch
-                        if "achievement" not in current_node and not is_alt_ending:
-                            current_node["achievement"] = {
-                                "type": "Achievement",
-                                "title": f"Completed: {current_node.get('name', 'Branch')}",
-                                "description": f"Congratulations! You completed the '{current_node.get('name', 'branch')}' storyline and demonstrated excellent decision-making skills."
-                            }
-                        
-                        # Create a pointer node instead of directly using the dest_node_obj
-                        merge_node = {
-                            "name": f"Merge back to: {dest_node_obj.get('name', 'Destination')}",
-                            "description": f"This path merges back to the main storyline at '{dest_node_obj.get('name', 'Destination')}'.",
-                            "children": [],
-                            "merge_target": dest_path  # Store just the path to the target, not the object itself
-                        }
-                        current_node["children"] = [merge_node]
-                    elif is_alt_ending:
-                        # If this is an alternate ending, make sure it has an achievement
-                        if "achievement" not in current_node:
-                            current_node["achievement"] = {
-                                "type": "Achievement",
-                                "title": f"Alternate Ending: {current_node.get('name', 'Conclusion')}",
-                                "description": f"Congratulations! You've discovered an alternate ending to the story. Your unique choices led to this special conclusion."
-                            }
+                            # For each branch option, find the last node in the chain
+                            for branch in branch_options_copy:
+                                # Navigate to the last node in the branch
+                                current_node = branch
+                                previous_node = None
+                                depth = 0
+                                
+                                # Navigate to the last node but stop before we reach the maximum depth
+                                while current_node.get("children", []) and depth < branch_length - 2:
+                                    if not current_node["children"]:
+                                        break
+                                    previous_node = current_node
+                                    current_node = current_node["children"][0]
+                                    depth += 1
+                                
+                                # Instead of directly connecting to the destination node object,
+                                # create a special node that references the destination but avoids circular references
+                                if dest_node_obj:
+                                    # Create a pointer node instead of directly using the dest_node_obj
+                                    merge_node = {
+                                        "name": f"Merge back to: {dest_node_obj.get('name', 'Destination')}",
+                                        "description": f"This path merges back to the main storyline at '{dest_node_obj.get('name', 'Destination')}'.",
+                                        "children": [],
+                                        "merge_target": dest_path  # Store just the path to the target, not the object itself
+                                    }
+                                    current_node["children"] = [merge_node]
                             
                             branch_options = branch_options_copy
                     
