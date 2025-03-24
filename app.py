@@ -6,7 +6,7 @@ from streamlit.components.v1 import html
 # Initialize the OpenAI client correctly
 client = OpenAI(api_key=st.secrets["api_keys"]["openai"])
 
-def get_story_json(prompt, is_initial_story=True, is_merge_branch=False):
+def get_story_json(prompt, is_initial_story=True, is_merge_branch=False, merge_target_id=None):
     system_message = ""
     if is_initial_story:
         # For the initial story, create a simple linear narrative
@@ -36,20 +36,20 @@ def get_story_json(prompt, is_initial_story=True, is_merge_branch=False):
         Do not include any branching choices at this stage."""
     elif is_merge_branch:
         # For creating a merge branch that connects back to the main story
-        system_message = """You are a storyteller creating a branch that will merge back into the main story.
+        system_message = f"""You are a storyteller creating a branch that will merge back into the main story.
         Respond with valid JSON that represents a connecting narrative path.
         
         The JSON should have this structure:
-        {
+        {{
           "name": "Merge Branch Title",
           "description": "Detailed paragraph about this part of the story that will logically lead back to the main story.",
           "is_merge_point": true,
-          "merge_target_id": "NODE_ID_TO_MERGE_WITH",
+          "merge_target_id": "{merge_target_id}",
           "children": []
-        }
+        }}
         
-        The 'merge_target_id' field should be the ID of the node in the main story where this branch will reconnect.
-        Create a logical transition that explains how the character or plot returns to the main storyline."""
+        Create a logical transition that explains how the character or plot returns to the main storyline.
+        The merge_target_id field has been pre-filled with the correct target node ID."""
     else:
         # For extending a branch, create multiple choices
         system_message = """You are a branching story generator. 
@@ -132,7 +132,7 @@ def get_story_json(prompt, is_initial_story=True, is_merge_branch=False):
                     }
                 ]
             }
-        elif is_merge_branch:
+                            elif is_merge_branch:
             return {
                 "name": "Return to Main Story",
                 "description": "This branch converges back to the main storyline.",
@@ -384,9 +384,26 @@ if st.session_state.story_data:
                 .attr("d", "M0,-5L10,0L0,5")
                 .attr("fill", d => d === "merge-arrow" ? "#a98adc" : "#999");
                 
-            // Create tree layout - vertical orientation (top to bottom)
+                            // Create tree layout - vertical orientation (top to bottom)
             const root = d3.hierarchy(processedData);
             const nodeCount = root.descendants().length;
+            
+            // Process data for visualization
+            // First, extract the merge points and store by ID for quick lookup
+            const mergePoints = new Map();
+            const nodeMap = new Map();
+            
+            // First pass - collect all node references
+            root.descendants().forEach(d => {
+                nodeMap.set(d.data.id, d);
+                
+                if (d.data.is_merge_point) {
+                    mergePoints.set(d.data.id, {
+                        source: d,
+                        targetId: d.data.merge_target_id
+                    });
+                }
+            });
             
             // Create a Y-axis spacing variable based on the number of nodes
             const ySpacing = Math.min(120, (height * 0.8) / (nodeCount + 1));
@@ -443,13 +460,15 @@ if st.session_state.story_data:
             
             // Process merge links
             const mergeData = [];
-            root.descendants().forEach(function(d) {
-                if (d.data.is_merge_point && d.data.merge_target_id) {
-                    // Find the target node in the hierarchy
-                    const target = root.descendants().find(node => node.data.id === d.data.merge_target_id);
-                    if (target) {
-                        mergeData.push({source: d, target: target});
-                    }
+            mergePoints.forEach((data, id) => {
+                const targetNode = nodeMap.get(data.targetId);
+                if (targetNode) {
+                    mergeData.push({
+                        source: data.source, 
+                        target: targetNode,
+                        sourceData: data.source.data,
+                        targetData: targetNode.data
+                    });
                 }
             });
             
@@ -462,7 +481,7 @@ if st.session_state.story_data:
                 .attr("d", function(d) {
                     // Create a curved path from source to target
                     const midX = (d.source.x + d.target.x) / 2;
-                    const midY = (d.source.y + d.target.y) / 2 - 50;
+                    const midY = Math.min(d.source.y, d.target.y) - 30;
                     
                     return "M" + d.source.x + "," + d.source.y +
                            "Q" + midX + "," + midY +
@@ -533,8 +552,12 @@ if st.session_state.story_data:
                               "<p>" + (nodeData.description || 'No description available.') + "</p>";
                 
                 if (nodeData.is_merge_point) {
+                    // Find the target node name
+                    const targetNode = allNodes.find(n => n.id === nodeData.merge_target_id);
+                    const targetName = targetNode ? targetNode.name : nodeData.merge_target_id;
+                    
                     content += "<p><strong>Merge Point:</strong> This branch reconnects to the main story.</p>";
-                    content += "<p><strong>Merges with:</strong> " + nodeData.merge_target_id + "</p>";
+                    content += "<p><strong>Merges with:</strong> " + targetName + "</p>";
                 }
                 
                 if (nodeData.children && nodeData.children.length > 0) {
@@ -749,7 +772,7 @@ if st.session_state.story_data:
                     """
                     
                     # Get merge branch from the API
-                    merge_branch = get_story_json(full_prompt, is_initial_story=False, is_merge_branch=True)
+                    merge_branch = get_story_json(full_prompt, is_initial_story=False, is_merge_branch=True, merge_target_id=merge_target_id)
                     
                     # Set the merge target ID
                     merge_branch["merge_target_id"] = merge_target_id
