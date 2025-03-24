@@ -576,7 +576,7 @@ if st.session_state.story_data:
 </html>
 '''
             
-            // Apply the layout
+            '''// Apply the layout
             treeLayout(root);
             
             // Store merge nodes and their targets for later processing
