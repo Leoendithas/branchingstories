@@ -6,6 +6,73 @@ from streamlit.components.v1 import html
 # Initialize the OpenAI client correctly
 client = OpenAI(api_key=st.secrets["api_keys"]["openai"])
 
+def generate_achievement(node_name, node_description):
+    """
+    Generate an achievement collectible based on a story node.
+    
+    Parameters:
+    node_name (str): The name/title of the story node
+    node_description (str): The description of the story node
+    
+    Returns:
+    dict: Achievement collectible with title and description
+    """
+    system_message = """You are an achievement generator for an interactive story.
+    Create a creative and rewarding achievement that fits the provided story node.
+    
+    The achievement should:
+    1. Have a catchy, memorable title that relates to the story event
+    2. Include a congratulatory description that references what the user accomplished
+    3. Be written in an encouraging tone
+    
+    Respond with valid JSON in this format:
+    {
+      "title": "Achievement Title",
+      "description": "Congratulatory message describing the achievement in 1-2 sentences."
+    }
+    
+    Be creative but concise.
+    """
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": f"Story node title: {node_name}\n\nStory node description: {node_description}"}
+            ],
+            max_tokens=300,
+            temperature=0.7
+        )
+        
+        achievement_content = response.choices[0].message.content
+        
+        # Try to clean the response if it's not pure JSON
+        if "```json" in achievement_content or "```" in achievement_content:
+            import re
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', achievement_content)
+            if json_match:
+                achievement_content = json_match.group(1)
+        
+        # Try to parse the JSON
+        achievement = json.loads(achievement_content)
+        
+        # Add collectible type field
+        achievement["collectible_type"] = "Achievement"
+        achievement["icon"] = ""
+        
+        return achievement
+    
+    except (json.JSONDecodeError, Exception) as e:
+        st.error(f"Failed to generate achievement: {e}")
+        # Return a default achievement
+        return {
+            "collectible_type": "Achievement",
+            "title": f"Completed: {node_name}",
+            "description": f"You reached the end of this story branch. Congratulations!",
+            "icon": ""
+        }
+
 def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending=False, single_branch=False):
     system_message = ""
     if is_initial_story:
@@ -148,7 +215,13 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
                                             {
                                                 "name": "End of Day",
                                                 "description": "The student completes their day and heads home.",
-                                                "children": []
+                                                "children": [],
+                                                "achievement": {
+                                                    "collectible_type": "Achievement",
+                                                    "title": "Day Completed",
+                                                    "description": "You've successfully navigated a day in the life of a student!",
+                                                    "icon": ""
+                                                }
                                             }
                                         ]
                                     }
@@ -166,7 +239,13 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
                     branch_nodes.append({
                         "name": f"Final Node in Branch",
                         "description": "The conclusion of this branch of the story.",
-                        "children": []
+                        "children": [],
+                        "achievement": {
+                            "collectible_type": "Achievement",
+                            "title": "Branch Completed",
+                            "description": "You've reached the end of this story branch!",
+                            "icon": ""
+                        }
                     })
                 else:
                     branch_nodes.append({
@@ -187,6 +266,32 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
                     "children": [branch_nodes[0]] if branch_nodes else []
                 }
             ]
+
+# Function to add achievements to end nodes recursively
+def add_achievements_to_end_nodes(node):
+    """
+    Recursively traverse the story tree and add achievements to end nodes.
+    
+    Parameters:
+    node (dict): A story node
+    
+    Returns:
+    bool: True if node was modified, False otherwise
+    """
+    # If node has no children, it's an end node
+    if not node.get("children") or len(node["children"]) == 0:
+        # Only add achievement if not already present
+        if "achievement" not in node:
+            node["achievement"] = generate_achievement(node["name"], node["description"])
+        return True
+    
+    # Otherwise, recursively process children
+    modified = False
+    for child in node.get("children", []):
+        if add_achievements_to_end_nodes(child):
+            modified = True
+    
+    return modified
 
 # Streamlit UI setup
 st.title('Branching Story Visualizer')
@@ -211,6 +316,8 @@ if 'story_data' not in st.session_state:
 if generate_button:
     with st.spinner('Generating story...'):
         st.session_state.story_data = get_story_json(prompt, is_initial_story=True)
+        # Add achievements to end nodes
+        add_achievements_to_end_nodes(st.session_state.story_data)
 
 # Render visualization if we have data
 if st.session_state.story_data:
@@ -282,9 +389,21 @@ if st.session_state.story_data:
                 stroke-width: 2px;
                 stroke-dasharray: 5,5;
             }
+            .achievement-node circle {
+                fill: #FFD700;
+                stroke: #B8860B;
+                stroke-width: 2px;
+            }
             h3 {
                 margin-top: 5px;
                 color: #333;
+            }
+            .achievement-section {
+                background-color: #FFF8E1;
+                padding: 10px;
+                border-radius: 5px;
+                border-left: 4px solid #FFD700;
+                margin-top: 15px;
             }
         </style>
     </head>
@@ -423,6 +542,7 @@ if st.session_state.story_data:
                     let classNames = "node";
                     classNames += d.children ? " node--internal" : " node--leaf";
                     if (d.data.merge_target) classNames += " merge-node";
+                    if (d.data.achievement) classNames += " achievement-node";
                     return classNames;
                 })
                 .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; })
@@ -461,7 +581,11 @@ if st.session_state.story_data:
                         .attr("y", bbox.y - padding)
                         .attr("width", bbox.width + (padding * 2))
                         .attr("height", bbox.height + (padding * 2))
-                        .attr("fill", d.data.merge_target ? "#F0E6FF" : "white")
+                        .attr("fill", function() {
+                            if (d.data.achievement) return "#FFF8E1";
+                            if (d.data.merge_target) return "#F0E6FF";
+                            return "white";
+                        })
                         .attr("fill-opacity", 0.8)
                         .attr("rx", 3)
                         .attr("ry", 3);
@@ -509,6 +633,14 @@ if st.session_state.story_data:
                 // Create HTML content
                 let content = "<h4>" + (nodeData.name || 'Unnamed Node') + "</h4>" +
                               "<p>" + (nodeData.description || 'No description available.') + "</p>";
+                
+                // Show achievement if available
+                if (nodeData.achievement) {
+                    content += "<div class='achievement-section'>" +
+                               "<h4>🏆 " + nodeData.achievement.title + "</h4>" +
+                               "<p>" + nodeData.achievement.description + "</p>" +
+                               "</div>";
+                }
                 
                 if (nodeData.merge_target) {
                     content += "<p><em>This node merges back to the main storyline.</em></p>";
@@ -669,6 +801,7 @@ if st.session_state.story_data:
                 # If single branch mode was used, we need to wrap the result in an array
                 if single_branch_mode and not isinstance(branch_options, list):
                     branch_options = [branch_options]
+                    
                 # Find the source node to extend
                 if source_node in st.session_state.node_paths:
                     source_path = st.session_state.node_paths[source_node]
@@ -712,6 +845,10 @@ if st.session_state.story_data:
                             
                             branch_options = branch_options_copy
                     
+                    # Add achievements to all end nodes in the new branches
+                    for branch in branch_options:
+                        add_achievements_to_end_nodes(branch)
+                    
                     # Helper function to update the story tree
                     def update_node_children(node, path, index, new_children):
                         if index >= len(path):
@@ -748,6 +885,9 @@ if st.session_state.story_data:
                             message = f"Successfully added {len(branch_options)} new branches to the story while preserving the original {original_count} path(s)!{merge_message}"
                         else:
                             message = f"Successfully added {len(branch_options)} new branches to the story!{merge_message}"
+                            
+                        # Add message about achievements
+                        message += " Achievements have been generated for all end points."
                         
                         st.success(message)
                         # Force a rerun to update the visualization
