@@ -123,7 +123,7 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
               ]
             }}
             
-            Create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
+            {f'Create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).' if branch_length > 0 else 'Create a single connector node with no children.'}
             {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
             {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
             """
@@ -162,7 +162,7 @@ def get_story_json(prompt, is_initial_story=True, branch_length=3, is_alt_ending
             
             Create 2-3 interesting and distinct branching options.
             
-            For each option, create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).
+            {f'For each option, create a branch with EXACTLY {branch_length} nodes (including the first node in the branch).' if branch_length > 0 else 'For each option, create a single connector node with no children.'}
             {'' if is_alt_ending else 'The final node should naturally lead back to the main story.'}
             {' The final node should be an alternative ending with closure.' if is_alt_ending else ''}
             """
@@ -729,7 +729,7 @@ if st.session_state.story_data:
                                 merge_options, key="dest_node")
     
     # Branch length slider
-    branch_length = st.slider("Number of nodes in branch path:", min_value=2, max_value=10, value=3)
+    branch_length = st.slider("Number of nodes in branch path:", min_value=0, max_value=10, value=3)
     
     # Add a radio button for single branch vs multiple branches
     branch_type = st.radio(
@@ -823,13 +823,15 @@ if st.session_state.story_data:
                                 previous_node = None
                                 depth = 0
                                 
-                                # Navigate to the last node but stop before we reach the maximum depth
-                                while current_node.get("children", []) and depth < branch_length - 2:
-                                    if not current_node["children"]:
-                                        break
-                                    previous_node = current_node
-                                    current_node = current_node["children"][0]
-                                    depth += 1
+                                # For direct merges (branch_length = 0), we don't need to navigate
+                                if branch_length > 0:
+                                    # Navigate to the last node but stop before we reach the maximum depth
+                                    while current_node.get("children", []) and depth < branch_length - 2:
+                                        if not current_node["children"]:
+                                            break
+                                        previous_node = current_node
+                                        current_node = current_node["children"][0]
+                                        depth += 1
                                 
                                 # Instead of directly connecting to the destination node object,
                                 # create a special node that references the destination but avoids circular references
@@ -845,9 +847,11 @@ if st.session_state.story_data:
                             
                             branch_options = branch_options_copy
                     
-                    # Add achievements to all end nodes in the new branches
-                    for branch in branch_options:
-                        add_achievements_to_end_nodes(branch)
+                        # For direct merges (branch_length = 0), no need to add achievements since they're just connectors
+                    if branch_length > 0:
+                        # Add achievements to all end nodes in the new branches
+                        for branch in branch_options:
+                            add_achievements_to_end_nodes(branch)
                     
                     # Helper function to update the story tree
                     def update_node_children(node, path, index, new_children):
@@ -886,8 +890,9 @@ if st.session_state.story_data:
                         else:
                             message = f"Successfully added {len(branch_options)} new branches to the story!{merge_message}"
                             
-                        # Add message about achievements
-                        message += " Achievements have been generated for all end points."
+                        # Add message about achievements (only if not direct merge)
+                        if branch_length > 0:
+                            message += " Achievements have been generated for all end points."
                         
                         st.success(message)
                         # Force a rerun to update the visualization
