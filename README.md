@@ -1,4 +1,3 @@
-````md
 # Branching Stories
 
 **Branching Stories** is a Python project for building and experimenting with *branching narratives* (choose-your-own-adventure style).
