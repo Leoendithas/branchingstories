@@ -2,6 +2,14 @@
 
 **Branching Stories** is a Python project for building and experimenting with *branching narratives* (choose-your-own-adventure style).
 
+See a demo at https://www.linkedin.com/feed/update/urn:li:activity:7330019362319355904/
+
+<img width="673" height="406" alt="image" src="https://github.com/user-attachments/assets/9202f2f3-d70c-41b0-a9f8-e3d77d3d8c31" />
+<img width="671" height="408" alt="image" src="https://github.com/user-attachments/assets/accaa28f-f243-411a-8673-2856a0b74cc5" />
+<img width="662" height="578" alt="image" src="https://github.com/user-attachments/assets/1307a0bf-c0f4-4d17-8ae6-0ac9af6740f1" />
+
+
+
 ---
 
 ## What’s in this repo
